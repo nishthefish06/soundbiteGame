@@ -75,12 +75,20 @@ export class Room {
 
     if (wasActor && this.state !== GameState.LOBBY) {
       // Actor disappeared mid-round: abort the round rather than guess who's next.
-      this._resetRound();
-      this._transition(GameState.LOBBY);
+      this.abortRound();
       return;
     }
 
     this._emitPlayersChanged();
+  }
+
+  // Bails out of the current round back to LOBBY without awarding anything.
+  // Used when the actor disconnects, or by the transport layer as a
+  // server-side backstop if the actor never submits a recording in time.
+  abortRound() {
+    if (this.state === GameState.LOBBY) return;
+    this._resetRound();
+    this._transition(GameState.LOBBY);
   }
 
   markDisconnected(id) {
