@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { processRecording } from '../dsp/processRecording.js';
+import { RECORDING_DURATION_MS } from '../gameConstants.js';
 
-export const MAX_RECORDING_MS = 15_000;
+export const MAX_RECORDING_MS = RECORDING_DURATION_MS;
 
 // Records up to MAX_RECORDING_MS of mic audio via MediaRecorder, then runs
 // the dry Blob through the chosen voice modifier's Web Audio graph and
