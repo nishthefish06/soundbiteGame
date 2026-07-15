@@ -98,6 +98,18 @@ export function useGameRoom(socket, playerId) {
     });
   }, [socket]);
 
+  const selectPrompt = useCallback(
+    (prompt) =>
+      new Promise((resolve) => {
+        setError(null);
+        socket.emit('game:selectPrompt', { prompt }, (res) => {
+          if (!res.ok) setError(res.error);
+          resolve(res);
+        });
+      }),
+    [socket],
+  );
+
   const submitRecording = useCallback(
     (modifier, blob) =>
       new Promise(async (resolve) => {
@@ -132,6 +144,7 @@ export function useGameRoom(socket, playerId) {
     createRoom,
     joinRoom,
     startRound,
+    selectPrompt,
     submitRecording,
     submitGuess,
   };

@@ -1,5 +1,6 @@
 export const GameState = Object.freeze({
   LOBBY: 'LOBBY',
+  PROMPT_SELECTION: 'PROMPT_SELECTION',
   ACTOR_RECORDING: 'ACTOR_RECORDING',
   GUESSING_ACTIVE: 'GUESSING_ACTIVE',
   ROUND_REVEAL: 'ROUND_REVEAL',
@@ -8,7 +9,9 @@ export const GameState = Object.freeze({
 export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 8;
 
-export const RECORDING_DURATION_MS = 15_000;
+export const PROMPT_OPTIONS_COUNT = 3;
+export const PROMPT_SELECTION_DURATION_MS = 15_000;
+export const RECORDING_DURATION_MS = 30_000;
 export const GUESSING_DURATION_MS = 60_000;
 export const REVEAL_DURATION_MS = 8_000;
 

@@ -1,4 +1,4 @@
-import { GameState, RECORDING_DURATION_MS, RECORDING_GRACE_MS, GUESSING_DURATION_MS, REVEAL_DURATION_MS, DISCONNECT_GRACE_MS } from '../game/constants.js';
+import { GameState, PROMPT_SELECTION_DURATION_MS, RECORDING_DURATION_MS, RECORDING_GRACE_MS, GUESSING_DURATION_MS, REVEAL_DURATION_MS, DISCONNECT_GRACE_MS } from '../game/constants.js';
 import { redactSnapshotFor, redactGuessFor } from './redact.js';
 
 const MAX_NAME_LENGTH = 20;
@@ -83,6 +83,14 @@ export function attachSocketHandlers(io, manager) {
       });
     });
 
+    socket.on('game:selectPrompt', (payload = {}, ack) => {
+      withRoom(socket, ack, (room) => {
+        const { prompt } = payload;
+        room.selectPrompt(socket.data.playerId, prompt);
+        reply(ack, { ok: true });
+      });
+    });
+
     socket.on('game:submitRecording', (payload = {}, ack) => {
       withRoom(socket, ack, (room) => {
         const { modifier, audio } = payload;
@@ -134,7 +142,12 @@ export function attachSocketHandlers(io, manager) {
 
     room.on('stateChange', ({ next }) => {
       clear();
-      if (next === GameState.ACTOR_RECORDING) {
+      if (next === GameState.PROMPT_SELECTION) {
+        phaseTimer = setTimeout(
+          () => safely(() => room.selectPrompt(room.actorId, room.promptOptions[0])),
+          PROMPT_SELECTION_DURATION_MS,
+        );
+      } else if (next === GameState.ACTOR_RECORDING) {
         phaseTimer = setTimeout(
           () => safely(() => room.abortRound()),
           RECORDING_DURATION_MS + RECORDING_GRACE_MS,

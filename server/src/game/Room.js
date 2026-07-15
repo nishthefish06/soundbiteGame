@@ -3,6 +3,7 @@ import {
   GameState,
   MIN_PLAYERS,
   MAX_PLAYERS,
+  PROMPT_OPTIONS_COUNT,
   VOICE_MODIFIERS,
   POINTS_CORRECT_GUESS,
   POINTS_ACTOR_PER_CORRECT_GUESSER,
@@ -24,6 +25,7 @@ export class Room {
     this.state = GameState.LOBBY;
     this.roundNumber = 0;
     this.actorId = null;
+    this.promptOptions = [];
     this.currentPrompt = null;
     this.currentModifier = null;
     this.promptDeck = createPromptDeck();
@@ -116,14 +118,27 @@ export class Room {
     this.roundNumber += 1;
     this._advanceActor();
 
-    if (this.promptDeck.length === 0) {
+    if (this.promptDeck.length < PROMPT_OPTIONS_COUNT) {
       this.promptDeck = createPromptDeck();
     }
-    this.currentPrompt = this.promptDeck.pop();
+    this.promptOptions = this.promptDeck.splice(-PROMPT_OPTIONS_COUNT);
+    this.currentPrompt = null;
     this.currentModifier = null;
     this.guesses = [];
     this.correctGuesserIds = new Set();
 
+    this._transition(GameState.PROMPT_SELECTION);
+  }
+
+  selectPrompt(actorId, prompt) {
+    this._assertState(GameState.PROMPT_SELECTION);
+    this._assertActor(actorId);
+    if (!this.promptOptions.includes(prompt)) {
+      throw new Error('INVALID_PROMPT_CHOICE');
+    }
+
+    this.currentPrompt = prompt;
+    this.promptOptions = [];
     this._transition(GameState.ACTOR_RECORDING);
   }
 
@@ -179,9 +194,10 @@ export class Room {
     this._transition(GameState.LOBBY);
   }
 
-  // Snapshot safe to broadcast. currentPrompt is included for the transport
-  // layer to redact per-recipient (actor + revealed guessers see it, active
-  // guessers don't).
+  // Snapshot safe to broadcast. currentPrompt/promptOptions are included for
+  // the transport layer to redact per-recipient (only the actor ever sees
+  // promptOptions; currentPrompt is visible to the actor and, once revealed,
+  // to everyone).
   toJSON() {
     return {
       code: this.code,
@@ -189,6 +205,7 @@ export class Room {
       roundNumber: this.roundNumber,
       actorId: this.actorId,
       currentModifier: this.currentModifier,
+      promptOptions: this.promptOptions,
       currentPrompt: this.currentPrompt,
       correctGuesserIds: [...this.correctGuesserIds],
       players: this.playerList.map(({ id, name, score, connected }) => ({
@@ -210,6 +227,7 @@ export class Room {
 
   _resetRound() {
     this.actorId = null;
+    this.promptOptions = [];
     this.currentPrompt = null;
     this.currentModifier = null;
     this.guesses = [];
