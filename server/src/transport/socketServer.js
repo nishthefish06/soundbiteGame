@@ -100,9 +100,17 @@ export function attachSocketHandlers(io, manager) {
       });
     });
 
-    socket.on('game:startRound', (_payload, ack) => {
+    socket.on('game:startGame', (payload = {}, ack) => {
       withRoom(socket, ack, (room) => {
-        room.startRound();
+        const { roundCount, mode } = payload;
+        room.startGame(roundCount, mode);
+        reply(ack, { ok: true });
+      });
+    });
+
+    socket.on('game:playAgain', (_payload, ack) => {
+      withRoom(socket, ack, (room) => {
+        room.returnToLobby();
         reply(ack, { ok: true });
       });
     });

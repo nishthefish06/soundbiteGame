@@ -14,7 +14,7 @@ export const MAX_PLAYERS = 8;
 // through that many rounds before landing on GAME_OVER. A room can host many
 // games back to back — GAME_OVER's "play again" returns to LOBBY to configure
 // the next one.
-export const VALID_ROUND_COUNTS = Object.freeze([3, 5, 10]);
+export const VALID_ROUND_COUNTS = Object.freeze([1, 3, 5]);
 
 export const PROMPT_OPTIONS_COUNT = 3;
 export const PROMPT_SELECTION_DURATION_MS = 15_000;

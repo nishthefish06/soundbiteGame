@@ -116,12 +116,29 @@ export function useGameRoom(socket, playerId) {
     [socket],
   );
 
-  const startRound = useCallback(() => {
-    setError(null);
-    socket.emit('game:startRound', {}, (res) => {
-      if (!res.ok) setError(res.error);
-    });
-  }, [socket]);
+  const startGame = useCallback(
+    (roundCount, mode) =>
+      new Promise((resolve) => {
+        setError(null);
+        socket.emit('game:startGame', { roundCount, mode }, (res) => {
+          if (!res.ok) setError(res.error);
+          resolve(res);
+        });
+      }),
+    [socket],
+  );
+
+  const playAgain = useCallback(
+    () =>
+      new Promise((resolve) => {
+        setError(null);
+        socket.emit('game:playAgain', {}, (res) => {
+          if (!res.ok) setError(res.error);
+          resolve(res);
+        });
+      }),
+    [socket],
+  );
 
   const selectPrompt = useCallback(
     (prompt) =>
@@ -169,7 +186,8 @@ export function useGameRoom(socket, playerId) {
     createRoom,
     joinRoom,
     leaveRoom,
-    startRound,
+    startGame,
+    playAgain,
     selectPrompt,
     submitRecording,
     submitGuess,

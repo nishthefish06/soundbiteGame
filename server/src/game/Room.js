@@ -3,17 +3,23 @@ import {
   GameState,
   MIN_PLAYERS,
   MAX_PLAYERS,
+  VALID_ROUND_COUNTS,
   PROMPT_OPTIONS_COUNT,
   VOICE_MODIFIERS,
   POINTS_CORRECT_GUESS,
   POINTS_ACTOR_PER_CORRECT_GUESSER,
 } from './constants.js';
-import { createPromptDeck } from './prompts.js';
+import { GAME_MODES, createPromptDeck, createPromptDecks } from './prompts.js';
 
 // Pure, transport-agnostic game state machine for a single room.
 // Holds no socket/timer references; the transport layer wires timers
 // (recording/guessing timeouts) to endGuessing()/etc. and relays the
 // events emitted here out over Socket.io.
+//
+// Hierarchy: a Room hosts a series of Games (one at a time); a Game is a
+// fixed number of Rounds all played in the same mode. LOBBY is where a game
+// gets configured and started; GAME_OVER is where one just ended and the
+// room decides whether to configure another.
 export class Room {
   constructor(code) {
     this.code = code;
@@ -23,12 +29,15 @@ export class Room {
     this.actorOrder = []; // rotation queue of player ids
 
     this.state = GameState.LOBBY;
+    this.totalRounds = 0;
     this.roundNumber = 0;
+    this.currentMode = null;
     this.actorId = null;
     this.promptOptions = [];
     this.currentPrompt = null;
+    this.currentPromptAnswers = []; // accepted guesses for currentPrompt — never serialized
     this.currentModifier = null;
-    this.promptDeck = createPromptDeck();
+    this.promptDecks = createPromptDecks(); // one deck per game mode
     this.guesses = [];
     this.correctGuesserIds = new Set();
   }
@@ -75,8 +84,8 @@ export class Room {
     this.players.delete(id);
     this.actorOrder = this.actorOrder.filter((pid) => pid !== id);
 
-    if (wasActor && this.state !== GameState.LOBBY) {
-      // Actor disappeared mid-round: abort the round rather than guess who's next.
+    if (wasActor && this.state !== GameState.LOBBY && this.state !== GameState.GAME_OVER) {
+      // Actor disappeared mid-round: skip this round rather than guess who's next.
       this.abortRound();
       return;
     }
@@ -84,13 +93,13 @@ export class Room {
     this._emitPlayersChanged();
   }
 
-  // Bails out of the current round back to LOBBY without awarding anything.
-  // Used when the actor disconnects, or by the transport layer as a
-  // server-side backstop if the actor never submits a recording in time.
+  // Skips the current round without awarding anything, then continues the
+  // game (next round) or ends it, same as a normal reveal would. Used when
+  // the actor disconnects, or by the transport layer as a server-side
+  // backstop if the actor never submits in time.
   abortRound() {
-    if (this.state === GameState.LOBBY) return;
-    this._resetRound();
-    this._transition(GameState.LOBBY);
+    if (this.state === GameState.LOBBY || this.state === GameState.GAME_OVER) return;
+    this._advanceRoundOrEndGame();
   }
 
   markDisconnected(id) {
@@ -107,37 +116,41 @@ export class Room {
     this._emitPlayersChanged();
   }
 
-  // -- round flow --
+  // -- game/round flow --
 
-  startRound() {
+  // Configures and kicks off a new game: a fixed number of rounds, all in the
+  // same mode. Scores reset — each game is its own contest.
+  startGame(totalRounds, mode) {
     this._assertState(GameState.LOBBY);
     if (this.playerCount < MIN_PLAYERS) {
       throw new Error('NOT_ENOUGH_PLAYERS');
     }
-
-    this.roundNumber += 1;
-    this._advanceActor();
-
-    if (this.promptDeck.length < PROMPT_OPTIONS_COUNT) {
-      this.promptDeck = createPromptDeck();
+    if (!VALID_ROUND_COUNTS.includes(totalRounds)) {
+      throw new Error('INVALID_ROUND_COUNT');
     }
-    this.promptOptions = this.promptDeck.splice(-PROMPT_OPTIONS_COUNT);
-    this.currentPrompt = null;
-    this.currentModifier = null;
-    this.guesses = [];
-    this.correctGuesserIds = new Set();
+    if (!GAME_MODES.includes(mode)) {
+      throw new Error('INVALID_MODE');
+    }
 
-    this._transition(GameState.PROMPT_SELECTION);
+    this.totalRounds = totalRounds;
+    this.currentMode = mode;
+    this.roundNumber = 0;
+    for (const player of this.playerList) player.score = 0;
+    this._emitPlayersChanged();
+
+    this._startNextRound();
   }
 
-  selectPrompt(actorId, prompt) {
+  selectPrompt(actorId, promptText) {
     this._assertState(GameState.PROMPT_SELECTION);
     this._assertActor(actorId);
-    if (!this.promptOptions.includes(prompt)) {
+    const chosen = this.promptOptions.find((option) => option.text === promptText);
+    if (!chosen) {
       throw new Error('INVALID_PROMPT_CHOICE');
     }
 
-    this.currentPrompt = prompt;
+    this.currentPrompt = chosen.text;
+    this.currentPromptAnswers = [chosen.text, ...chosen.synonyms];
     this.promptOptions = [];
     this._transition(GameState.ACTOR_RECORDING);
   }
@@ -159,7 +172,8 @@ export class Room {
     if (playerId === this.actorId) throw new Error('ACTOR_CANNOT_GUESS');
     if (this.correctGuesserIds.has(playerId)) throw new Error('ALREADY_GUESSED_CORRECTLY');
 
-    const correct = normalize(rawText) === normalize(this.currentPrompt);
+    const normalizedGuess = normalize(rawText);
+    const correct = this.currentPromptAnswers.some((answer) => normalize(answer) === normalizedGuess);
     const guess = { playerId, text: rawText, correct, timestamp: Date.now() };
     this.guesses.push(guess);
     this.emitter.emit('guess', { room: this.code, guess });
@@ -188,21 +202,31 @@ export class Room {
     this._transition(GameState.ROUND_REVEAL);
   }
 
+  // Continues to the next round, or ends the game if that was the last one.
   finishReveal() {
     this._assertState(GameState.ROUND_REVEAL);
-    this._resetRound();
+    this._advanceRoundOrEndGame();
+  }
+
+  // From GAME_OVER, back to LOBBY to configure another game in this room.
+  returnToLobby() {
+    this._assertState(GameState.GAME_OVER);
+    this._resetGame();
     this._transition(GameState.LOBBY);
   }
 
-  // Snapshot safe to broadcast. currentPrompt/promptOptions are included for
-  // the transport layer to redact per-recipient (only the actor ever sees
-  // promptOptions; currentPrompt is visible to the actor and, once revealed,
-  // to everyone).
+  // Snapshot safe to broadcast. currentMode/totalRounds are never sensitive
+  // (everyone can see what kind of game this is); currentPrompt/promptOptions
+  // are included for the transport layer to redact per-recipient (only the
+  // actor ever sees promptOptions; currentPrompt is visible to the actor and,
+  // once revealed, to everyone).
   toJSON() {
     return {
       code: this.code,
       state: this.state,
+      totalRounds: this.totalRounds,
       roundNumber: this.roundNumber,
+      currentMode: this.currentMode,
       actorId: this.actorId,
       currentModifier: this.currentModifier,
       promptOptions: this.promptOptions,
@@ -225,13 +249,47 @@ export class Room {
     this.actorId = next;
   }
 
-  _resetRound() {
-    this.actorId = null;
-    this.promptOptions = [];
+  _startNextRound() {
+    this.roundNumber += 1;
+    this._advanceActor();
+
+    const deck = this.promptDecks[this.currentMode];
+    if (deck.length < PROMPT_OPTIONS_COUNT) {
+      this.promptDecks[this.currentMode] = createPromptDeck(this.currentMode);
+    }
+    this.promptOptions = this.promptDecks[this.currentMode].splice(-PROMPT_OPTIONS_COUNT);
     this.currentPrompt = null;
     this.currentModifier = null;
     this.guesses = [];
     this.correctGuesserIds = new Set();
+
+    this._transition(GameState.PROMPT_SELECTION);
+  }
+
+  _advanceRoundOrEndGame() {
+    if (this.roundNumber < this.totalRounds) {
+      this._startNextRound();
+    } else {
+      this._resetRound();
+      this._transition(GameState.GAME_OVER);
+    }
+  }
+
+  _resetRound() {
+    this.actorId = null;
+    this.promptOptions = [];
+    this.currentPrompt = null;
+    this.currentPromptAnswers = [];
+    this.currentModifier = null;
+    this.guesses = [];
+    this.correctGuesserIds = new Set();
+  }
+
+  _resetGame() {
+    this.totalRounds = 0;
+    this.currentMode = null;
+    this.roundNumber = 0;
+    this._resetRound();
   }
 
   _assertState(expected) {
@@ -260,6 +318,7 @@ function normalize(str) {
     .toLowerCase()
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/-/g, ' ') // hyphens are word separators ("dial-up" ~ "dial up"), not just noise to drop
     .replace(/[^a-z0-9\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim();

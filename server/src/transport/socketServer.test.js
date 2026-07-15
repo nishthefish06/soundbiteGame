@@ -4,6 +4,7 @@ import http from 'node:http';
 import { Server } from 'socket.io';
 import { io as ioClient } from 'socket.io-client';
 import { RoomManager } from '../game/RoomManager.js';
+import { GAME_MODES } from '../game/prompts.js';
 import { attachSocketHandlers } from './socketServer.js';
 
 async function startTestServer() {
@@ -79,13 +80,14 @@ test('full lifecycle: create, join, round, guess, reveal, redaction', async () =
     assert.equal(afterP3Roster.length, 3);
 
     // Same rule applies here: register game:stateChanged listeners before
-    // triggering startRound, or the synchronously-emitted broadcast races the ack.
+    // triggering startGame, or the synchronously-emitted broadcast races the ack.
     const stateChanges = { [host.playerId]: null, [p2.playerId]: null, [p3.playerId]: null };
     host.socket.on('game:stateChanged', (s) => { stateChanges[host.playerId] = s; });
     p2.socket.on('game:stateChanged', (s) => { stateChanges[p2.playerId] = s; });
     p3.socket.on('game:stateChanged', (s) => { stateChanges[p3.playerId] = s; });
 
-    const startRes = await ack(host.socket, 'game:startRound', {});
+    const [mode] = GAME_MODES;
+    const startRes = await ack(host.socket, 'game:startGame', { roundCount: 3, mode });
     assert.equal(startRes.ok, true);
 
     // Figure out who the actor is via the room snapshot from the manager (test-only introspection).
@@ -96,12 +98,15 @@ test('full lifecycle: create, join, round, guess, reveal, redaction', async () =
     const guessers = [host, p2, p3].filter((p) => p.playerId !== actorId);
 
     await new Promise((r) => setTimeout(r, 50));
+    assert.equal(stateChanges[actorId].currentMode, mode, 'currentMode is visible to everyone, not redacted');
+    assert.equal(stateChanges[actorId].totalRounds, 3, 'totalRounds is visible to everyone');
     assert.equal(stateChanges[actorId].promptOptions.length, 3, 'actor should see 3 prompt options');
     for (const g of guessers) {
+      assert.equal(stateChanges[g.playerId].currentMode, mode, 'guessers should also see the chosen mode');
       assert.deepEqual(stateChanges[g.playerId].promptOptions, [], 'guessers must not see the prompt options');
     }
 
-    const [chosenPrompt] = room.promptOptions;
+    const [{ text: chosenPrompt }] = room.promptOptions;
     const selectRes = await ack(actorSocket, 'game:selectPrompt', { prompt: chosenPrompt });
     assert.equal(selectRes.ok, true);
     assert.equal(room.state, 'ACTOR_RECORDING');
@@ -224,7 +229,7 @@ test('room:leave removes the player immediately, no grace period', async () => {
     assert.equal(room.players.has(p2.playerId), false);
 
     // A stale ack on a room they've already left should fail cleanly.
-    const staleRes = await ack(p2.socket, 'game:startRound', {});
+    const staleRes = await ack(p2.socket, 'game:startGame', { roundCount: 3, mode: 'SOUND_EFFECT' });
     assert.equal(staleRes.ok, false);
     assert.equal(staleRes.error, 'ROOM_NOT_FOUND');
 
@@ -236,21 +241,72 @@ test('room:leave removes the player immediately, no grace period', async () => {
   }
 });
 
-test('leaving as the actor mid-round aborts the round back to LOBBY', async () => {
+test('leaving as the actor mid-round skips to the next round instead of ending the game', async () => {
   const server = await startTestServer();
   try {
     const host = await makePlayer(server.url, 'Alice');
     const p2 = await makePlayer(server.url, 'Bob', host.roomCode);
     const p3 = await makePlayer(server.url, 'Cara', host.roomCode);
 
-    await ack(host.socket, 'game:startRound', {});
+    await ack(host.socket, 'game:startGame', { roundCount: 3, mode: GAME_MODES[0] });
     const room = server.manager.getRoom(host.roomCode);
     const actorSocket = [host, p2, p3].find((p) => p.playerId === room.actorId).socket;
+    const leavingActorId = room.actorId;
 
     const leaveRes = await ack(actorSocket, 'room:leave', {});
     assert.equal(leaveRes.ok, true);
-    assert.equal(room.state, 'LOBBY');
+    assert.equal(room.state, 'PROMPT_SELECTION', 'game continues into round 2');
+    assert.equal(room.roundNumber, 2);
+    assert.notEqual(room.actorId, leavingActorId);
     assert.equal(room.playerCount, 2);
+
+    for (const p of [host, p2, p3]) p.socket.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('playing a full short game ends at GAME_OVER, and playAgain returns to LOBBY for a new game', async () => {
+  const server = await startTestServer();
+  try {
+    const host = await makePlayer(server.url, 'Alice');
+    const p2 = await makePlayer(server.url, 'Bob', host.roomCode);
+    const p3 = await makePlayer(server.url, 'Cara', host.roomCode);
+    const room = server.manager.getRoom(host.roomCode);
+
+    await ack(host.socket, 'game:startGame', { roundCount: 3, mode: GAME_MODES[0] });
+
+    for (let round = 1; round <= 3; round += 1) {
+      const actorSocket = [host, p2, p3].find((p) => p.playerId === room.actorId).socket;
+      const guesserSockets = [host, p2, p3].filter((p) => p.playerId !== room.actorId).map((p) => p.socket);
+
+      await ack(actorSocket, 'game:selectPrompt', { prompt: room.promptOptions[0].text });
+      await ack(actorSocket, 'game:submitRecording', { modifier: 'ROBOT', audio: new Uint8Array([1]).buffer });
+      const prompt = room.currentPrompt;
+      for (const s of guesserSockets) {
+        await ack(s, 'game:submitGuess', { text: prompt });
+      }
+      assert.equal(room.state, 'ROUND_REVEAL', 'everyone guessing correctly triggers reveal');
+
+      // In production REVEAL_DURATION_MS's timer drives this; call directly
+      // here rather than waiting out the real timer in a test.
+      room.finishReveal();
+      assert.equal(room.state, round < 3 ? 'PROMPT_SELECTION' : 'GAME_OVER');
+    }
+
+    assert.equal(room.state, 'GAME_OVER');
+
+    const playAgainRes = await ack(host.socket, 'game:playAgain', {});
+    assert.equal(playAgainRes.ok, true);
+    assert.equal(room.state, 'LOBBY');
+    assert.equal(room.totalRounds, 0);
+
+    // A new game can be configured immediately, in the same room.
+    const secondGameRes = await ack(host.socket, 'game:startGame', { roundCount: 5, mode: GAME_MODES[1] });
+    assert.equal(secondGameRes.ok, true);
+    assert.equal(room.state, 'PROMPT_SELECTION');
+    assert.equal(room.totalRounds, 5);
+    assert.equal(room.currentMode, GAME_MODES[1]);
 
     for (const p of [host, p2, p3]) p.socket.close();
   } finally {
