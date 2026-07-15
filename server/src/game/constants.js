@@ -4,10 +4,17 @@ export const GameState = Object.freeze({
   ACTOR_RECORDING: 'ACTOR_RECORDING',
   GUESSING_ACTIVE: 'GUESSING_ACTIVE',
   ROUND_REVEAL: 'ROUND_REVEAL',
+  GAME_OVER: 'GAME_OVER',
 });
 
 export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 8;
+
+// A game is configured once (round count + mode) when it starts, then plays
+// through that many rounds before landing on GAME_OVER. A room can host many
+// games back to back — GAME_OVER's "play again" returns to LOBBY to configure
+// the next one.
+export const VALID_ROUND_COUNTS = Object.freeze([3, 5, 10]);
 
 export const PROMPT_OPTIONS_COUNT = 3;
 export const PROMPT_SELECTION_DURATION_MS = 15_000;

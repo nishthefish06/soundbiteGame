@@ -10,6 +10,7 @@ import { GuesserWaitingView } from './components/GuesserWaitingView.jsx';
 import { GuessingView } from './components/GuessingView.jsx';
 import { ActorListeningView } from './components/ActorListeningView.jsx';
 import { RoundRevealView } from './components/RoundRevealView.jsx';
+import { GameOverView } from './components/GameOverView.jsx';
 import { GUESSING_DURATION_MS } from './gameConstants.js';
 
 export default function App() {
@@ -33,11 +34,12 @@ export default function App() {
   function renderPhase() {
     switch (snapshot.state) {
       case 'LOBBY':
-        return <LobbyView snapshot={snapshot} onStartRound={game.startRound} />;
+        return <LobbyView snapshot={snapshot} onStartGame={game.startGame} />;
 
       case 'PROMPT_SELECTION':
         return game.isActor ? (
           <PromptSelectionView
+            mode={snapshot.currentMode}
             options={snapshot.promptOptions}
             phaseEnteredAt={game.phaseEnteredAt}
             onSelectPrompt={game.selectPrompt}
@@ -76,6 +78,9 @@ export default function App() {
       case 'ROUND_REVEAL':
         return <RoundRevealView snapshot={snapshot} phaseEnteredAt={game.phaseEnteredAt} />;
 
+      case 'GAME_OVER':
+        return <GameOverView players={snapshot.players} onPlayAgain={game.playAgain} />;
+
       default:
         return null;
     }
@@ -87,7 +92,9 @@ export default function App() {
 
       <header className="room-header">
         <span className="room-code">{snapshot.code}</span>
-        <span className="round-label">Round {snapshot.roundNumber}</span>
+        {snapshot.totalRounds > 0 && (
+          <span className="round-label">Round {snapshot.roundNumber} of {snapshot.totalRounds}</span>
+        )}
         <button className="btn btn-ghost btn-sm leave-button" onClick={game.leaveRoom}>
           Leave
         </button>

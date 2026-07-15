@@ -439,6 +439,46 @@ button, input {
   transform: translateY(-1px);
 }
 
+/* ---------- lobby setup ---------- */
+
+.lobby-setup {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.lobby-setup-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pill-picker {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pill-option {
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.pill-option:hover {
+  border-color: var(--primary);
+}
+.pill-option-selected {
+  border-color: var(--primary);
+  background: var(--bg-card-hover);
+}
+
 /* ---------- modifier picker ---------- */
 
 .modifier-picker {
@@ -639,4 +679,50 @@ button, input {
   justify-content: center;
   min-height: 260px;
   width: 100%;
+}
+
+/* ---------- game over ---------- */
+
+.game-over-view {
+  align-items: center;
+  text-align: center;
+  justify-content: center;
+  min-height: 260px;
+  width: 100%;
+}
+
+.final-scoreboard {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.final-scoreboard-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+
+.final-scoreboard-rank {
+  color: var(--text-muted);
+  font-weight: 700;
+  width: 2ch;
+}
+
+.final-scoreboard-name {
+  flex: 1;
+  text-align: left;
+  font-weight: 600;
+}
+
+.final-scoreboard-score {
+  font-weight: 700;
 }
