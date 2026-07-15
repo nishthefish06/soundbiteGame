@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { rememberRoom } from '../recentRooms.js';
 
 // Owns all room/game socket wiring so view components stay presentational:
 // snapshot (redacted per-viewer by the server already), chat log, the
@@ -71,7 +72,10 @@ export function useGameRoom(socket, playerId) {
         setError(null);
         socket.emit('room:create', { playerId, name }, (res) => {
           if (!res.ok) setError(res.error);
-          else setSnapshot(res.snapshot);
+          else {
+            setSnapshot(res.snapshot);
+            rememberRoom(res.roomCode, name);
+          }
           resolve(res);
         });
       }),
@@ -84,11 +88,32 @@ export function useGameRoom(socket, playerId) {
         setError(null);
         socket.emit('room:join', { playerId, name, roomCode: roomCode.trim().toUpperCase() }, (res) => {
           if (!res.ok) setError(res.error);
-          else setSnapshot(res.snapshot);
+          else {
+            setSnapshot(res.snapshot);
+            rememberRoom(res.roomCode, name);
+          }
           resolve(res);
         });
       }),
     [socket, playerId],
+  );
+
+  const leaveRoom = useCallback(
+    () =>
+      new Promise((resolve) => {
+        socket.emit('room:leave', {}, (res) => {
+          setSnapshot(null);
+          setChat([]);
+          setIncomingAudio((prev) => {
+            if (prev) URL.revokeObjectURL(prev.url);
+            return null;
+          });
+          setPhaseEnteredAt(null);
+          lastRoundRef.current = null;
+          resolve(res);
+        });
+      }),
+    [socket],
   );
 
   const startRound = useCallback(() => {
@@ -143,6 +168,7 @@ export function useGameRoom(socket, playerId) {
     isActor: Boolean(snapshot && snapshot.actorId === playerId),
     createRoom,
     joinRoom,
+    leaveRoom,
     startRound,
     selectPrompt,
     submitRecording,

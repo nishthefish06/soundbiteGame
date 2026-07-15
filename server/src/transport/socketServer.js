@@ -48,6 +48,23 @@ export function attachSocketHandlers(io, manager) {
     manager.removeRoom(room.code);
   }
 
+  // A deliberate leave (unlike a dropped connection) removes the player
+  // immediately — no point holding their seat via the disconnect grace period.
+  function leaveRoom(socket, room, playerId) {
+    const pending = disconnectTimers.get(playerId);
+    if (pending) {
+      clearTimeout(pending);
+      disconnectTimers.delete(playerId);
+    }
+    playerSocketIds.delete(playerId);
+    room.removePlayer(playerId);
+    scheduleRoomCleanup(room);
+
+    socket.leave(room.code);
+    delete socket.data.playerId;
+    delete socket.data.roomCode;
+  }
+
   io.on('connection', (socket) => {
     socket.on('room:create', (payload = {}, ack) => {
       try {
@@ -74,6 +91,13 @@ export function attachSocketHandlers(io, manager) {
       } catch (err) {
         reply(ack, { ok: false, error: err.message });
       }
+    });
+
+    socket.on('room:leave', (_payload, ack) => {
+      withRoom(socket, ack, (room) => {
+        leaveRoom(socket, room, socket.data.playerId);
+        reply(ack, { ok: true });
+      });
     });
 
     socket.on('game:startRound', (_payload, ack) => {

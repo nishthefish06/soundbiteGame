@@ -108,6 +108,11 @@ button, input {
   font-size: 1.05rem;
 }
 
+.btn-sm {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+}
+
 .input {
   width: 100%;
   padding: 0.7rem 0.9rem;
@@ -189,6 +194,48 @@ button, input {
   flex: 1;
 }
 
+.recent-rooms {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.recent-rooms-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.recent-room-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.recent-room-chip:hover {
+  border-color: var(--primary);
+}
+.recent-room-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.recent-room-remove {
+  color: var(--text-muted);
+  font-weight: 400;
+  line-height: 1;
+  padding: 0.1rem 0.2rem;
+  border-radius: 50%;
+}
+.recent-room-remove:hover {
+  color: var(--danger);
+}
+
 .error-text {
   color: var(--danger);
   font-size: 0.9rem;
@@ -234,6 +281,9 @@ button, input {
   align-items: baseline;
   gap: 0.75rem;
   margin-bottom: 1.25rem;
+}
+.leave-button {
+  margin-left: auto;
 }
 .room-code {
   font-size: 1.5rem;

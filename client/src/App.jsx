@@ -88,6 +88,9 @@ export default function App() {
       <header className="room-header">
         <span className="room-code">{snapshot.code}</span>
         <span className="round-label">Round {snapshot.roundNumber}</span>
+        <button className="btn btn-ghost btn-sm leave-button" onClick={game.leaveRoom}>
+          Leave
+        </button>
       </header>
 
       {game.error && <div className="banner banner-error">{game.error}</div>}

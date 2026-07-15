@@ -205,6 +205,59 @@ test('disconnect then reconnect within grace period preserves the player and sco
   }
 });
 
+test('room:leave removes the player immediately, no grace period', async () => {
+  const server = await startTestServer();
+  try {
+    const host = await makePlayer(server.url, 'Alice');
+    const p2 = await makePlayer(server.url, 'Bob', host.roomCode);
+    const p3 = await makePlayer(server.url, 'Cara', host.roomCode);
+
+    const room = server.manager.getRoom(host.roomCode);
+    assert.equal(room.playerCount, 3);
+
+    const rosterPromise = waitFor(host.socket, 'room:playersChanged');
+    const leaveRes = await ack(p2.socket, 'room:leave', {});
+    assert.equal(leaveRes.ok, true);
+
+    const roster = await rosterPromise;
+    assert.equal(roster.length, 2, 'Bob should be gone immediately, not just marked disconnected');
+    assert.equal(room.players.has(p2.playerId), false);
+
+    // A stale ack on a room they've already left should fail cleanly.
+    const staleRes = await ack(p2.socket, 'game:startRound', {});
+    assert.equal(staleRes.ok, false);
+    assert.equal(staleRes.error, 'ROOM_NOT_FOUND');
+
+    host.socket.close();
+    p2.socket.close();
+    p3.socket.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('leaving as the actor mid-round aborts the round back to LOBBY', async () => {
+  const server = await startTestServer();
+  try {
+    const host = await makePlayer(server.url, 'Alice');
+    const p2 = await makePlayer(server.url, 'Bob', host.roomCode);
+    const p3 = await makePlayer(server.url, 'Cara', host.roomCode);
+
+    await ack(host.socket, 'game:startRound', {});
+    const room = server.manager.getRoom(host.roomCode);
+    const actorSocket = [host, p2, p3].find((p) => p.playerId === room.actorId).socket;
+
+    const leaveRes = await ack(actorSocket, 'room:leave', {});
+    assert.equal(leaveRes.ok, true);
+    assert.equal(room.state, 'LOBBY');
+    assert.equal(room.playerCount, 2);
+
+    for (const p of [host, p2, p3]) p.socket.close();
+  } finally {
+    await server.close();
+  }
+});
+
 test('rejects joining a room that does not exist', async () => {
   const server = await startTestServer();
   try {
