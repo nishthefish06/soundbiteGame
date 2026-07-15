@@ -358,6 +358,37 @@ button, input {
   color: transparent;
 }
 
+/* ---------- prompt selection ---------- */
+
+.prompt-selection-view {
+  width: 100%;
+}
+
+.prompt-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.prompt-option-card {
+  text-align: left;
+  padding: 1rem 1.1rem;
+  border-radius: var(--radius);
+  border: 2px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.1s ease, background 0.15s ease;
+}
+.prompt-option-card:hover {
+  border-color: var(--primary);
+  background: var(--bg-card-hover);
+  transform: translateY(-1px);
+}
+
 /* ---------- modifier picker ---------- */
 
 .modifier-picker {

@@ -4,6 +4,7 @@ import { useCountdown } from './hooks/useCountdown.js';
 import { JoinScreen } from './components/JoinScreen.jsx';
 import { PlayerList } from './components/PlayerList.jsx';
 import { LobbyView } from './components/LobbyView.jsx';
+import { PromptSelectionView } from './components/PromptSelectionView.jsx';
 import { ActorRecordingView } from './components/ActorRecordingView.jsx';
 import { GuesserWaitingView } from './components/GuesserWaitingView.jsx';
 import { GuessingView } from './components/GuessingView.jsx';
@@ -33,6 +34,17 @@ export default function App() {
     switch (snapshot.state) {
       case 'LOBBY':
         return <LobbyView snapshot={snapshot} onStartRound={game.startRound} />;
+
+      case 'PROMPT_SELECTION':
+        return game.isActor ? (
+          <PromptSelectionView
+            options={snapshot.promptOptions}
+            phaseEnteredAt={game.phaseEnteredAt}
+            onSelectPrompt={game.selectPrompt}
+          />
+        ) : (
+          <GuesserWaitingView actorName={actor?.name ?? 'The actor'} action="is picking a prompt" />
+        );
 
       case 'ACTOR_RECORDING':
         return game.isActor ? (

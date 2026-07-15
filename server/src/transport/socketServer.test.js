@@ -90,14 +90,24 @@ test('full lifecycle: create, join, round, guess, reveal, redaction', async () =
 
     // Figure out who the actor is via the room snapshot from the manager (test-only introspection).
     const room = server.manager.getRoom(host.roomCode);
-    assert.equal(room.state, 'ACTOR_RECORDING');
+    assert.equal(room.state, 'PROMPT_SELECTION');
     const actorId = room.actorId;
     const actorSocket = [host, p2, p3].find((p) => p.playerId === actorId).socket;
     const guessers = [host, p2, p3].filter((p) => p.playerId !== actorId);
 
-    // Give stateChanged events a tick to land.
     await new Promise((r) => setTimeout(r, 50));
-    assert.ok(stateChanges[actorId].currentPrompt, 'actor should see the prompt');
+    assert.equal(stateChanges[actorId].promptOptions.length, 3, 'actor should see 3 prompt options');
+    for (const g of guessers) {
+      assert.deepEqual(stateChanges[g.playerId].promptOptions, [], 'guessers must not see the prompt options');
+    }
+
+    const [chosenPrompt] = room.promptOptions;
+    const selectRes = await ack(actorSocket, 'game:selectPrompt', { prompt: chosenPrompt });
+    assert.equal(selectRes.ok, true);
+    assert.equal(room.state, 'ACTOR_RECORDING');
+
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(stateChanges[actorId].currentPrompt, chosenPrompt, 'actor should see the chosen prompt');
     for (const g of guessers) {
       assert.equal(stateChanges[g.playerId].currentPrompt, null, 'guessers must not see the prompt');
     }
