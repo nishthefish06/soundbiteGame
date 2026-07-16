@@ -172,8 +172,13 @@ export class Room {
     if (playerId === this.actorId) throw new Error('ACTOR_CANNOT_GUESS');
     if (this.correctGuesserIds.has(playerId)) throw new Error('ALREADY_GUESSED_CORRECTLY');
 
-    const normalizedGuess = normalize(rawText);
-    const correct = this.currentPromptAnswers.some((answer) => normalize(answer) === normalizedGuess);
+    const guessWords = significantWords(rawText);
+    const correct =
+      guessWords.length > 0 &&
+      this.currentPromptAnswers.some((answer) => {
+        const answerWords = significantWords(answer);
+        return guessWords.every((word) => answerWords.includes(word));
+      });
     const guess = { playerId, text: rawText, correct, timestamp: Date.now() };
     this.guesses.push(guess);
     this.emitter.emit('guess', { room: this.code, guess });
@@ -322,4 +327,19 @@ function normalize(str) {
     .replace(/[^a-z0-9\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// Filler words a guesser naturally drops ("snapping" for "Snapping your
+// fingers") that shouldn't be required for a match.
+const STOPWORDS = new Set(['a', 'an', 'the', 'your', 'is', 'on', 'in', 'at', 'to', 'of', 'and']);
+
+// A guess is correct if every word it contains also appears in the answer —
+// so a guess can be a shorter/partial phrasing of the answer, but can't add
+// words the answer doesn't have. Keeps the curated `synonyms` list for
+// genuinely different phrasings (nicknames, alternate wording) while no
+// longer requiring every subset of an answer's words to be enumerated by hand.
+function significantWords(str) {
+  return normalize(str)
+    .split(' ')
+    .filter((word) => word && !STOPWORDS.has(word));
 }

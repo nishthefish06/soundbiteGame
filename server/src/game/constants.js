@@ -31,6 +31,7 @@ export const RECORDING_GRACE_MS = 5_000;
 export const DISCONNECT_GRACE_MS = 30_000;
 
 export const VOICE_MODIFIERS = Object.freeze([
+  'NONE',
   'ROBOT',
   'DEMON',
   'HIGH_PITCH',
