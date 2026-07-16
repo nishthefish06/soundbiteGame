@@ -113,7 +113,7 @@ const ACTION_SOUNDS = [
   p('Kissing sound', 'a kiss', 'smooch'),
   p('Slurping noodles', 'slurping'),
   p('Coughing'),
-  p('Snapping your fingers', 'finger snap'),
+  p('Snapping your fingers', 'finger snap', 'snapping fingers', 'snapping', 'finger snapping'),
   p('Humming a tune', 'humming'),
   p('Gargling mouthwash', 'gargling'),
   p('Sighing heavily', 'sighing'),

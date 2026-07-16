@@ -4,6 +4,15 @@
 // chain onto an already-connected AudioBufferSourceNode. build() returns the
 // last node in the chain; the caller connects that to the destination.
 export const VOICE_MODIFIERS = {
+  NONE: {
+    label: 'No Effect',
+    emoji: '🗣️',
+    playbackRate: 1,
+    build(ctx, source) {
+      return source;
+    },
+  },
+
   ROBOT: {
     label: 'Robot',
     emoji: '🤖',
