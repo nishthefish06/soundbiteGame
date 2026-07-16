@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { getRecentRooms, forgetRoom } from '../recentRooms.js';
+import { MicIcon } from './icons.jsx';
 
 export function JoinScreen({ onCreate, onJoin, error }) {
   const [name, setName] = useState('');
@@ -41,7 +42,7 @@ export function JoinScreen({ onCreate, onJoin, error }) {
     <div className="join-screen">
       <div className="join-card card">
         <h1 className="logo">
-          🎙️ Soundbite
+          <MicIcon className="logo-icon" /> Soundbite
         </h1>
         <p className="tagline">Disguise your voice. Guess the bit.</p>
 

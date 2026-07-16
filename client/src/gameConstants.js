@@ -14,6 +14,6 @@ export const VALID_ROUND_COUNTS = [3, 5, 10];
 // Mirrors server/src/game/prompts.js's GAME_MODES/PromptCategory — display metadata only.
 export const GAME_MODES = ['SOUND_EFFECT', 'CHARACTER'];
 export const GAME_MODE_META = {
-  SOUND_EFFECT: { label: 'Sound Effect', emoji: '🔊' },
-  CHARACTER: { label: 'Character', emoji: '🎭' },
+  SOUND_EFFECT: { label: 'Sound Effect' },
+  CHARACTER: { label: 'Character' },
 };

@@ -1,3 +1,5 @@
+import { MicIcon } from './icons.jsx';
+
 function initials(name) {
   return name
     .trim()
@@ -20,7 +22,7 @@ export function PlayerList({ players, actorId, correctGuesserIds = [], selfId })
             {p.name}
             {p.id === selfId && <span className="player-you"> (you)</span>}
           </span>
-          {p.id === actorId && <span className="badge badge-actor" title="Actor">🎭</span>}
+          {p.id === actorId && <span className="badge badge-actor" title="Actor"><MicIcon /></span>}
           {correctGuesserIds.includes(p.id) && <span className="badge badge-correct" title="Guessed correctly">✅</span>}
           {!p.connected && <span className="badge badge-offline" title="Disconnected">⚠️</span>}
           <span className="player-score">{p.score}</span>

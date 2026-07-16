@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { MIN_PLAYERS, MAX_PLAYERS, VALID_ROUND_COUNTS, GAME_MODES, GAME_MODE_META } from '../gameConstants.js';
+import { MODE_ICONS } from './icons.jsx';
 
 export function LobbyView({ snapshot, onStartGame }) {
   const [roundCount, setRoundCount] = useState(VALID_ROUND_COUNTS[0]);
@@ -38,6 +39,7 @@ export function LobbyView({ snapshot, onStartGame }) {
           <div className="pill-picker">
             {GAME_MODES.map((m) => {
               const meta = GAME_MODE_META[m];
+              const Icon = MODE_ICONS[m];
               return (
                 <button
                   key={m}
@@ -45,7 +47,7 @@ export function LobbyView({ snapshot, onStartGame }) {
                   className={`pill-option ${mode === m ? 'pill-option-selected' : ''}`}
                   onClick={() => setMode(m)}
                 >
-                  {meta.emoji} {meta.label}
+                  <Icon className="pill-icon" /> {meta.label}
                 </button>
               );
             })}

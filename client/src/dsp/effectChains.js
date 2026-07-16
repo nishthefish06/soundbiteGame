@@ -6,7 +6,6 @@
 export const VOICE_MODIFIERS = {
   NONE: {
     label: 'No Effect',
-    emoji: '🗣️',
     playbackRate: 1,
     build(ctx, source) {
       return source;
@@ -15,7 +14,6 @@ export const VOICE_MODIFIERS = {
 
   ROBOT: {
     label: 'Robot',
-    emoji: '🤖',
     playbackRate: 1,
     build(ctx, source) {
       // Ring modulation: an oscillator driven straight into a GainNode's
@@ -42,7 +40,6 @@ export const VOICE_MODIFIERS = {
 
   DEMON: {
     label: 'Demon',
-    emoji: '😈',
     playbackRate: 0.65,
     build(ctx, source) {
       const lowpass = ctx.createBiquadFilter();
@@ -61,7 +58,6 @@ export const VOICE_MODIFIERS = {
 
   HIGH_PITCH: {
     label: 'High Pitch',
-    emoji: '🎈',
     playbackRate: 1.5,
     build(ctx, source) {
       const highpass = ctx.createBiquadFilter();
@@ -74,7 +70,6 @@ export const VOICE_MODIFIERS = {
 
   CHIPMUNK: {
     label: 'Chipmunk',
-    emoji: '🐿️',
     playbackRate: 1.9,
     build(ctx, source) {
       const highpass = ctx.createBiquadFilter();
@@ -87,7 +82,6 @@ export const VOICE_MODIFIERS = {
 
   ECHO: {
     label: 'Echo',
-    emoji: '🔊',
     playbackRate: 1,
     build(ctx, source) {
       const dry = ctx.createGain();

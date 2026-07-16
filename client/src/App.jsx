@@ -12,6 +12,7 @@ import { ActorListeningView } from './components/ActorListeningView.jsx';
 import { RoundRevealView } from './components/RoundRevealView.jsx';
 import { GameOverView } from './components/GameOverView.jsx';
 import { GUESSING_DURATION_MS } from './gameConstants.js';
+import { friendlyError } from './errorMessages.js';
 
 export default function App() {
   const { socket, connected, playerId } = useSocket();
@@ -23,7 +24,7 @@ export default function App() {
   if (!snapshot) {
     return (
       <div className="app-shell">
-        <JoinScreen onCreate={game.createRoom} onJoin={game.joinRoom} error={game.error} />
+        <JoinScreen onCreate={game.createRoom} onJoin={game.joinRoom} error={friendlyError(game.error)} />
       </div>
     );
   }
@@ -100,7 +101,7 @@ export default function App() {
         </button>
       </header>
 
-      {game.error && <div className="banner banner-error">{game.error}</div>}
+      {game.error && <div className="banner banner-error">{friendlyError(game.error)}</div>}
 
       <div className="room-layout">
         <main className="room-main card">{renderPhase()}</main>
