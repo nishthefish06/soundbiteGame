@@ -52,7 +52,7 @@ export function JoinScreen({ onCreate, onJoin, error }) {
             className="input"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Riley"
+            placeholder="e.g. Bob"
             maxLength={20}
             autoFocus
           />
