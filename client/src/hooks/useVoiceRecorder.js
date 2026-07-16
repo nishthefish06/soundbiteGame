@@ -4,6 +4,24 @@ import { RECORDING_DURATION_MS } from '../gameConstants.js';
 
 export const MAX_RECORDING_MS = RECORDING_DURATION_MS;
 
+// getUserMedia rejects with a DOMException whose `name` identifies the
+// failure; its `message` is browser-specific and not fit to show a player.
+function describeMicError(err) {
+  switch (err.name) {
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+      return 'Microphone access was denied. Allow it in your browser’s site settings, then try again.';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return 'No microphone found. Connect one and try again.';
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return 'Your microphone is in use by another app. Close it and try again.';
+    default:
+      return err.message || 'Could not access the microphone. Please try again.';
+  }
+}
+
 // Records up to MAX_RECORDING_MS of mic audio via MediaRecorder, then runs
 // the dry Blob through the chosen voice modifier's Web Audio graph and
 // exposes the processed WAV Blob for local preview or sending over the wire.
@@ -72,7 +90,7 @@ export function useVoiceRecorder() {
             setStatus('ready');
           } catch (err) {
             setStatus('error');
-            setError(err.message);
+            setError(err.message || 'Could not process the recording. Please try again.');
           }
         };
 
@@ -87,7 +105,7 @@ export function useVoiceRecorder() {
         }, 100);
       } catch (err) {
         setStatus('error');
-        setError(err.message);
+        setError(describeMicError(err));
       }
     },
     [releaseStream, releasePreviewUrl, stop],

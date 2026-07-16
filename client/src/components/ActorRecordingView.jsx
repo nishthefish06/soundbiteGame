@@ -44,7 +44,14 @@ export function ActorRecordingView({ prompt, onSubmitRecording }) {
 
         {recorder.status === 'processing' && <p className="muted">Disguising your voice…</p>}
 
-        {recorder.error && <p className="error-text">{recorder.error}</p>}
+        {recorder.status === 'error' && (
+          <div className="recorder-error">
+            <p className="error-text">{recorder.error}</p>
+            <button className="btn btn-secondary" onClick={() => recorder.start(modifier)}>
+              Try again
+            </button>
+          </div>
+        )}
 
         {recorder.status === 'ready' && !sent && (
           <div className="recording-preview">

@@ -307,6 +307,45 @@ button, input {
   }
 }
 
+@media (max-width: 480px) {
+  .app-shell {
+    padding: 1.25rem 0.85rem 2rem;
+  }
+  .card {
+    padding: 1.15rem;
+  }
+  .room-header {
+    flex-wrap: wrap;
+    row-gap: 0.35rem;
+  }
+  .room-code {
+    font-size: 1.2rem;
+  }
+  .round-label {
+    font-size: 0.85rem;
+  }
+  .record-button {
+    width: 96px;
+    height: 96px;
+  }
+  .modifier-picker {
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    gap: 0.4rem;
+  }
+  .modifier-card {
+    padding: 0.6rem 0.4rem;
+  }
+  .join-row {
+    flex-direction: column;
+  }
+  .lobby-setup {
+    gap: 1rem;
+  }
+  .prompt-reveal {
+    font-size: 1.15rem;
+  }
+}
+
 .room-main {
   min-height: 320px;
 }
@@ -568,6 +607,14 @@ button, input {
 @keyframes pulse-ring {
   0%, 100% { box-shadow: 0 0 0 0 rgba(229, 49, 112, 0.4); }
   50% { box-shadow: 0 0 0 10px rgba(229, 49, 112, 0); }
+}
+
+.recorder-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  text-align: center;
 }
 
 .recording-preview {

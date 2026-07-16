@@ -6,7 +6,16 @@ import { RoomManager } from './game/RoomManager.js';
 import { attachSocketHandlers } from './transport/socketServer.js';
 
 const PORT = process.env.PORT || 3001;
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || '*';
+
+// CLIENT_ORIGIN is a comma-separated allowlist (e.g. your Vercel prod domain
+// plus any preview deployment URLs). In production this must be set
+// explicitly — falling back to '*' would let any site's script open a
+// socket to this server. Dev keeps the '*' fallback for convenience.
+const rawOrigins = process.env.CLIENT_ORIGIN?.split(',').map((o) => o.trim()).filter(Boolean);
+if (!rawOrigins?.length && process.env.NODE_ENV === 'production') {
+  throw new Error('CLIENT_ORIGIN must be set in production (comma-separated list of allowed origins).');
+}
+const CLIENT_ORIGIN = rawOrigins?.length ? rawOrigins : '*';
 
 const manager = new RoomManager();
 
