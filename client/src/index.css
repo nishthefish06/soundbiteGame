@@ -367,7 +367,7 @@ h1, h2 {
   gap: 0.75rem;
   margin-bottom: 1.25rem;
 }
-.leave-button {
+.how-to-play-button {
   margin-left: auto;
 }
 .copy-code-button {
@@ -998,4 +998,109 @@ h1, h2 {
 .final-scoreboard-score {
   font-weight: 800;
   color: var(--accent);
+}
+
+/* ---------- how to play ---------- */
+
+.how-to-play-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  text-decoration: underline;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  margin: -0.5rem 0 0.25rem;
+  align-self: flex-start;
+}
+.how-to-play-link:hover {
+  color: var(--text);
+}
+
+.how-to-play-button {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1rem;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 15, 46, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  z-index: 100;
+}
+
+.modal-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  max-height: 85vh;
+  overflow-y: auto;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.modal-close {
+  position: absolute;
+  top: 0.9rem;
+  right: 0.9rem;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background: var(--sticker-1);
+  color: var(--ink);
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.how-to-play-steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.how-to-play-modes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.how-to-play-modes li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.how-to-play-modes p {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+}
+
+.how-to-play-mode-icon {
+  width: 1.4rem;
+  height: 1.4rem;
+  flex-shrink: 0;
+  color: var(--accent);
+  margin-top: 0.15rem;
 }

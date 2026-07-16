@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { getRecentRooms, forgetRoom } from '../recentRooms.js';
 import { MicIcon } from './icons.jsx';
+import { HowToPlayModal } from './HowToPlayModal.jsx';
 
 // Prefills the room code from a shared invite link (?room=XXXX) — see the
 // header's "Copy invite" button in App.jsx, which is what generates these.
@@ -13,6 +14,7 @@ export function JoinScreen({ onCreate, onJoin, error }) {
   const [roomCode, setRoomCode] = useState(roomCodeFromUrl);
   const [busy, setBusy] = useState(false);
   const [recentRooms, setRecentRooms] = useState(getRecentRooms);
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -50,7 +52,10 @@ export function JoinScreen({ onCreate, onJoin, error }) {
         <h1 className="logo">
           <MicIcon className="logo-icon" /> Soundbite
         </h1>
-        <p className="tagline">Disguise your voice. Guess the bit.</p>
+        <p className="tagline">Make some noise. Hope your friends understand you.</p>
+        <button type="button" className="how-to-play-link" onClick={() => setShowHowToPlay(true)}>
+          How to play
+        </button>
 
         <label className="field">
           <span className="field-label">Your name</span>
@@ -108,6 +113,8 @@ export function JoinScreen({ onCreate, onJoin, error }) {
 
         {error && <p className="error-text">{error}</p>}
       </div>
+
+      {showHowToPlay && <HowToPlayModal onClose={() => setShowHowToPlay(false)} />}
     </div>
   );
 }

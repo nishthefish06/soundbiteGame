@@ -13,6 +13,7 @@ import { GuessingView } from './components/GuessingView.jsx';
 import { ActorListeningView } from './components/ActorListeningView.jsx';
 import { RoundRevealView } from './components/RoundRevealView.jsx';
 import { GameOverView } from './components/GameOverView.jsx';
+import { HowToPlayModal } from './components/HowToPlayModal.jsx';
 import { CopyIcon, CheckIcon } from './components/icons.jsx';
 import { GUESSING_DURATION_MS, VALID_ROUND_COUNTS, GAME_MODES } from './gameConstants.js';
 import { friendlyError } from './errorMessages.js';
@@ -31,6 +32,7 @@ export default function App() {
   const [lobbyCustomText, setLobbyCustomText] = useState('');
 
   const [copied, setCopied] = useState(false);
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
 
   if (!snapshot) {
     return (
@@ -158,10 +160,19 @@ export default function App() {
         {snapshot.totalRounds > 0 && (
           <span className="round-label">Round {snapshot.roundNumber} of {snapshot.totalRounds}</span>
         )}
+        <button
+          className="btn btn-ghost btn-sm how-to-play-button"
+          onClick={() => setShowHowToPlay(true)}
+          title="How to play"
+        >
+          ?
+        </button>
         <button className="btn btn-ghost btn-sm leave-button" onClick={game.leaveRoom}>
           Leave
         </button>
       </header>
+
+      {showHowToPlay && <HowToPlayModal onClose={() => setShowHowToPlay(false)} />}
 
       {game.error && <div className="banner banner-error">{friendlyError(game.error)}</div>}
 
