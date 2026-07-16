@@ -1,5 +1,6 @@
 import { GameState, PROMPT_SELECTION_DURATION_MS, RECORDING_DURATION_MS, RECORDING_GRACE_MS, GUESSING_DURATION_MS, REVEAL_DURATION_MS, DISCONNECT_GRACE_MS } from '../game/constants.js';
 import { redactSnapshotFor, redactGuessFor } from './redact.js';
+import { isProfane } from '../game/profanity.js';
 
 const MAX_NAME_LENGTH = 20;
 
@@ -137,6 +138,7 @@ export function attachSocketHandlers(io, manager) {
       withRoom(socket, ack, (room) => {
         const { text } = payload;
         if (typeof text !== 'string' || !text.trim()) throw new Error('INVALID_GUESS');
+        if (isProfane(text)) throw new Error('GUESS_NOT_ALLOWED');
         const guess = room.submitGuess(socket.data.playerId, text);
         reply(ack, { ok: true, correct: guess.correct });
       });
@@ -221,6 +223,7 @@ function assertIdentity(playerId, name) {
   if (typeof playerId !== 'string' || !playerId.trim()) throw new Error('INVALID_PLAYER_ID');
   if (typeof name !== 'string' || !name.trim()) throw new Error('INVALID_NAME');
   if (name.trim().length > MAX_NAME_LENGTH) throw new Error('NAME_TOO_LONG');
+  if (isProfane(name)) throw new Error('NAME_NOT_ALLOWED');
 }
 
 function reply(ack, payload) {

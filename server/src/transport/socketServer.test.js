@@ -327,3 +327,48 @@ test('rejects joining a room that does not exist', async () => {
     await server.close();
   }
 });
+
+test('rejects creating a room with a profane player name', async () => {
+  const server = await startTestServer();
+  try {
+    const socket = connect(server.url);
+    await waitFor(socket, 'connect');
+    const res = await ack(socket, 'room:create', { playerId: 'x', name: 'shithead' });
+    assert.equal(res.ok, false);
+    assert.equal(res.error, 'NAME_NOT_ALLOWED');
+    socket.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('rejects a profane guess without recording it in the chat or scoring it', async () => {
+  const server = await startTestServer();
+  try {
+    const host = await makePlayer(server.url, 'Alice');
+    const p2 = await makePlayer(server.url, 'Bob', host.roomCode);
+    const p3 = await makePlayer(server.url, 'Cara', host.roomCode);
+
+    await ack(host.socket, 'game:startGame', { roundCount: 3, mode: GAME_MODES[0] });
+    const room = server.manager.getRoom(host.roomCode);
+    const actorSocket = [host, p2, p3].find((p) => p.playerId === room.actorId).socket;
+    const guesser = [host, p2, p3].find((p) => p.playerId !== room.actorId);
+
+    await ack(actorSocket, 'game:selectPrompt', { prompt: room.promptOptions[0].text });
+    await ack(actorSocket, 'game:submitRecording', { modifier: 'ROBOT', audio: new Uint8Array([1]).buffer });
+
+    const guessChat = [];
+    guesser.socket.on('game:guess', (g) => guessChat.push(g));
+
+    const res = await ack(guesser.socket, 'game:submitGuess', { text: 'shit' });
+    assert.equal(res.ok, false);
+    assert.equal(res.error, 'GUESS_NOT_ALLOWED');
+    assert.equal(room.guesses.length, 0, 'the profane guess must not be recorded');
+    assert.equal(guessChat.length, 0, 'the profane guess must not reach the chat');
+    assert.equal(room.players.get(guesser.playerId).score, 0);
+
+    for (const p of [host, p2, p3]) p.socket.close();
+  } finally {
+    await server.close();
+  }
+});
