@@ -1,0 +1,4 @@
+server/src/game/Room.test.js
+server/src/game/RoomManager.test.js
+server/src/transport/redact.test.js
+server/src/transport/socketServer.test.js
