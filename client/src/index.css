@@ -370,6 +370,15 @@ h1, h2 {
 .leave-button {
   margin-left: auto;
 }
+.copy-code-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.copy-code-button svg {
+  width: 1em;
+  height: 1em;
+}
 .room-code {
   font-family: var(--font-body);
   font-size: 1.2rem;

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useSocket } from './hooks/useSocket.js';
 import { useGameRoom } from './hooks/useGameRoom.js';
 import { useCountdown } from './hooks/useCountdown.js';
@@ -12,7 +13,8 @@ import { GuessingView } from './components/GuessingView.jsx';
 import { ActorListeningView } from './components/ActorListeningView.jsx';
 import { RoundRevealView } from './components/RoundRevealView.jsx';
 import { GameOverView } from './components/GameOverView.jsx';
-import { GUESSING_DURATION_MS } from './gameConstants.js';
+import { CopyIcon, CheckIcon } from './components/icons.jsx';
+import { GUESSING_DURATION_MS, VALID_ROUND_COUNTS, GAME_MODES } from './gameConstants.js';
 import { friendlyError } from './errorMessages.js';
 
 export default function App() {
@@ -21,6 +23,14 @@ export default function App() {
   const { snapshot } = game;
 
   const guessingRemainingMs = useCountdown(game.phaseEnteredAt, GUESSING_DURATION_MS);
+
+  // Lifted out of LobbyView so a "Play again" (which unmounts/remounts it)
+  // doesn't reset the host back to the defaults every time.
+  const [lobbyRoundCount, setLobbyRoundCount] = useState(VALID_ROUND_COUNTS[0]);
+  const [lobbyMode, setLobbyMode] = useState(GAME_MODES[0]);
+  const [lobbyCustomText, setLobbyCustomText] = useState('');
+
+  const [copied, setCopied] = useState(false);
 
   if (!snapshot) {
     return (
@@ -36,7 +46,18 @@ export default function App() {
   function renderPhase() {
     switch (snapshot.state) {
       case 'LOBBY':
-        return <LobbyView snapshot={snapshot} onStartGame={game.startGame} />;
+        return (
+          <LobbyView
+            snapshot={snapshot}
+            onStartGame={game.startGame}
+            roundCount={lobbyRoundCount}
+            onRoundCountChange={setLobbyRoundCount}
+            mode={lobbyMode}
+            onModeChange={setLobbyMode}
+            customText={lobbyCustomText}
+            onCustomTextChange={setLobbyCustomText}
+          />
+        );
 
       case 'PROMPT_SELECTION':
         return game.isActor ? (
@@ -117,6 +138,23 @@ export default function App() {
 
       <header className="room-header">
         <span className="room-code">{snapshot.code}</span>
+        <button
+          className="btn btn-ghost btn-sm copy-code-button"
+          onClick={async () => {
+            const url = `${window.location.origin}${window.location.pathname}?room=${snapshot.code}`;
+            try {
+              await navigator.clipboard.writeText(url);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            } catch {
+              // Clipboard API unavailable/denied — the code is still visible to copy by hand.
+            }
+          }}
+          title="Copy invite link"
+        >
+          {copied ? <CheckIcon /> : <CopyIcon />}
+          {copied ? 'Copied!' : 'Copy invite'}
+        </button>
         {snapshot.totalRounds > 0 && (
           <span className="round-label">Round {snapshot.roundNumber} of {snapshot.totalRounds}</span>
         )}

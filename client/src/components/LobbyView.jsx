@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   MIN_PLAYERS,
   MAX_PLAYERS,
@@ -10,11 +9,19 @@ import {
 } from '../gameConstants.js';
 import { MODE_ICONS } from './icons.jsx';
 
-export function LobbyView({ snapshot, onStartGame }) {
-  const [roundCount, setRoundCount] = useState(VALID_ROUND_COUNTS[0]);
-  const [mode, setMode] = useState(GAME_MODES[0]);
-  const [customText, setCustomText] = useState('');
-
+// Round count/mode/custom text are owned by App (not local state here) so
+// they survive LobbyView unmounting between rounds — otherwise every
+// "Play again" reset the host back to the defaults.
+export function LobbyView({
+  snapshot,
+  onStartGame,
+  roundCount,
+  onRoundCountChange,
+  mode,
+  onModeChange,
+  customText,
+  onCustomTextChange,
+}) {
   const playerCount = snapshot.players.length;
   const canStart = playerCount >= MIN_PLAYERS;
 
@@ -43,7 +50,7 @@ export function LobbyView({ snapshot, onStartGame }) {
                 key={n}
                 type="button"
                 className={`pill-option ${roundCount === n ? 'pill-option-selected' : ''}`}
-                onClick={() => setRoundCount(n)}
+                onClick={() => onRoundCountChange(n)}
               >
                 {n}
               </button>
@@ -62,7 +69,7 @@ export function LobbyView({ snapshot, onStartGame }) {
                   key={m}
                   type="button"
                   className={`pill-option ${mode === m ? 'pill-option-selected' : ''}`}
-                  onClick={() => setMode(m)}
+                  onClick={() => onModeChange(m)}
                 >
                   <Icon className="pill-icon" /> {meta.label}
                 </button>
@@ -78,7 +85,7 @@ export function LobbyView({ snapshot, onStartGame }) {
           <textarea
             className="input custom-prompts-textarea"
             value={customText}
-            onChange={(e) => setCustomText(e.target.value)}
+            onChange={(e) => onCustomTextChange(e.target.value)}
             placeholder={"e.g.\nDad's terrible fishing story\nOur inside joke about the road trip"}
             rows={5}
           />
