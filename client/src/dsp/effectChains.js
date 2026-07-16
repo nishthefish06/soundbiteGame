@@ -106,6 +106,34 @@ export const VOICE_MODIFIERS = {
       return mix;
     },
   },
+
+  // Genuinely mangles the signal rather than just recoloring it — narrow
+  // telephone-bandwidth filtering plus heavy waveshaper grit. Used by
+  // TELEPHONE mode, where degradation is meant to compound hop over hop.
+  DISTORT: {
+    label: 'Distort',
+    playbackRate: 1,
+    build(ctx, source) {
+      const bandpass = ctx.createBiquadFilter();
+      bandpass.type = 'bandpass';
+      bandpass.frequency.value = 1200;
+      bandpass.Q.value = 0.6;
+
+      const shaper = ctx.createWaveShaper();
+      shaper.curve = distortionCurve(45);
+      shaper.oversample = '4x';
+
+      const crackle = ctx.createBiquadFilter();
+      crackle.type = 'highshelf';
+      crackle.frequency.value = 2500;
+      crackle.gain.value = 8;
+
+      source.connect(bandpass);
+      bandpass.connect(shaper);
+      shaper.connect(crackle);
+      return crackle;
+    },
+  },
 };
 
 function distortionCurve(amount) {

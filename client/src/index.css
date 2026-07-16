@@ -528,6 +528,10 @@ h1, h2 {
 .badge-actor {
   color: var(--accent);
 }
+.badge-streak {
+  font-size: 0.8rem;
+  font-weight: 800;
+}
 
 .player-score {
   font-weight: 800;
@@ -617,8 +621,28 @@ h1, h2 {
   gap: 0.5rem;
 }
 
+.custom-prompts-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  width: 100%;
+  text-align: left;
+}
+.custom-prompts-textarea {
+  min-height: 110px;
+  resize: vertical;
+  line-height: 1.4;
+}
+.custom-prompts-count {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
 .pill-picker {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 0.6rem;
 }
 
@@ -893,6 +917,18 @@ h1, h2 {
   justify-content: center;
   min-height: 260px;
   width: 100%;
+}
+
+.reveal-audio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  width: 100%;
+}
+.reveal-audio audio {
+  width: 100%;
+  max-width: 320px;
 }
 
 /* ---------- game over ---------- */

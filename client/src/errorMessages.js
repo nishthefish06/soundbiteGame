@@ -5,6 +5,9 @@
 const ERROR_MESSAGES = {
   NAME_NOT_ALLOWED: "That name isn't allowed here — please choose another.",
   GUESS_NOT_ALLOWED: "That guess isn't allowed here — keep it clean and try again.",
+  NOT_ENOUGH_CUSTOM_PROMPTS: 'Add a few more custom prompts before starting.',
+  CUSTOM_PROMPT_TOO_LONG: "One of your prompts is too long — keep each one short.",
+  CUSTOM_PROMPT_NOT_ALLOWED: "One of your prompts isn't allowed here — keep it clean and try again.",
 };
 
 export function friendlyError(code) {
