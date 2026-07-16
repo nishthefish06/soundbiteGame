@@ -133,6 +133,23 @@ export function CustomIcon(props) {
   );
 }
 
+export function CopyIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+      <rect x="8" y="8" width="12" height="12" rx="2" {...stroke} />
+      <path d="M5 16V6a2 2 0 0 1 2-2h10" {...stroke} />
+    </svg>
+  );
+}
+
+export function CheckIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+      <path d="M5 13l4 4 10-10" {...stroke} />
+    </svg>
+  );
+}
+
 export const MODE_ICONS = {
   SOUND_EFFECT: SoundEffectIcon,
   CHARACTER: CharacterIcon,

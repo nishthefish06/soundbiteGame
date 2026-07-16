@@ -2,9 +2,15 @@ import { useState } from 'react';
 import { getRecentRooms, forgetRoom } from '../recentRooms.js';
 import { MicIcon } from './icons.jsx';
 
+// Prefills the room code from a shared invite link (?room=XXXX) — see the
+// header's "Copy invite" button in App.jsx, which is what generates these.
+function roomCodeFromUrl() {
+  return new URLSearchParams(window.location.search).get('room')?.trim().toUpperCase() ?? '';
+}
+
 export function JoinScreen({ onCreate, onJoin, error }) {
   const [name, setName] = useState('');
-  const [roomCode, setRoomCode] = useState('');
+  const [roomCode, setRoomCode] = useState(roomCodeFromUrl);
   const [busy, setBusy] = useState(false);
   const [recentRooms, setRecentRooms] = useState(getRecentRooms);
 

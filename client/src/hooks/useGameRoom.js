@@ -1,6 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { rememberRoom } from '../recentRooms.js';
 
+// Keeps the address bar itself a valid invite link (?room=CODE) — so the
+// "Copy invite" button isn't the only way to get a shareable URL; the
+// browser's own URL works too, and reloading while in a room preserves it.
+function setRoomCodeInUrl(code) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('room', code);
+  window.history.replaceState(null, '', url);
+}
+
+function clearRoomCodeInUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('room');
+  window.history.replaceState(null, '', url);
+}
+
 // Owns all room/game socket wiring so view components stay presentational:
 // snapshot (redacted per-viewer by the server already), chat log, the
 // incoming disguised-audio URL, and action creators for every client->server
@@ -93,6 +108,7 @@ export function useGameRoom(socket, playerId) {
           else {
             setSnapshot(res.snapshot);
             rememberRoom(res.roomCode, name);
+            setRoomCodeInUrl(res.roomCode);
           }
           resolve(res);
         });
@@ -109,6 +125,7 @@ export function useGameRoom(socket, playerId) {
           else {
             setSnapshot(res.snapshot);
             rememberRoom(res.roomCode, name);
+            setRoomCodeInUrl(res.roomCode);
           }
           resolve(res);
         });
@@ -132,6 +149,7 @@ export function useGameRoom(socket, playerId) {
           });
           setPhaseEnteredAt(null);
           lastRoundRef.current = null;
+          clearRoomCodeInUrl();
           resolve(res);
         });
       }),
