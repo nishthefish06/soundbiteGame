@@ -25,6 +25,11 @@ export function PlayerList({ players, actorId, correctGuesserIds = [], selfId })
           {p.id === actorId && <span className="badge badge-actor" title="Actor"><MicIcon /></span>}
           {correctGuesserIds.includes(p.id) && <span className="badge badge-correct" title="Guessed correctly">✅</span>}
           {!p.connected && <span className="badge badge-offline" title="Disconnected">⚠️</span>}
+          {p.streak >= 2 && (
+            <span className="badge badge-streak" title={`${p.streak} correct guesses in a row`}>
+              🔥{p.streak}
+            </span>
+          )}
           <span className="player-score">{p.score}</span>
         </li>
       ))}

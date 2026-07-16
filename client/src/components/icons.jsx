@@ -105,9 +105,39 @@ export function EchoIcon(props) {
   );
 }
 
+export function TelephoneIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+      <path
+        d="M5 4c1 0 2 .3 2 1.3 0 1-.5 1.5-.5 2.3 0 1.5 2 3.5 3.5 5s3.5 3.5 5 3.5c.8 0 1.3-.5 2.3-.5 1 0 1.3 1 1.3 2 0 1.5-1 2.4-2.5 2.4C11 20 4 13 4 6.5 4 5 4.9 4 5 4z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+export function DistortIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+      <path d="M2 12h3l1.5-7 3 15 2.5-11 1.5 3h8.5" {...stroke} />
+    </svg>
+  );
+}
+
+export function CustomIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+      <path d="M4 20l1-4.5L15.5 5 19 8.5 8.5 19 4 20z" {...stroke} />
+      <path d="M14 6.5l3.5 3.5" {...stroke} />
+    </svg>
+  );
+}
+
 export const MODE_ICONS = {
   SOUND_EFFECT: SoundEffectIcon,
   CHARACTER: CharacterIcon,
+  CUSTOM: CustomIcon,
+  TELEPHONE: TelephoneIcon,
 };
 
 export const MODIFIER_ICONS = {
@@ -117,4 +147,5 @@ export const MODIFIER_ICONS = {
   HIGH_PITCH: HighPitchIcon,
   CHIPMUNK: ChipmunkIcon,
   ECHO: EchoIcon,
+  DISTORT: DistortIcon,
 };
