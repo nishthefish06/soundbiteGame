@@ -61,10 +61,12 @@ function makeBot(name) {
   socket.on('game:stateChanged', (snapshot) => {
     console.log(`[${name}] state -> ${snapshot.state}${snapshot.actorId === playerId ? ' (I am actor)' : ''}`);
 
-    if (snapshot.state === 'ACTOR_RECORDING' && snapshot.actorId === playerId) {
+    const isRecordingPhase = snapshot.state === 'ACTOR_RECORDING' || snapshot.state === 'RELAY_RECORDING';
+    if (isRecordingPhase && snapshot.actorId === playerId) {
+      const modifier = snapshot.currentMode === 'TELEPHONE' ? 'DISTORT' : 'ROBOT';
       setTimeout(() => {
         const audio = makeDummyWavBuffer();
-        socket.emit('game:submitRecording', { modifier: 'ROBOT', audio }, (res) => {
+        socket.emit('game:submitRecording', { modifier, audio }, (res) => {
           if (!res.ok) console.log(`[${name}] submitRecording failed: ${res.error}`);
         });
       }, 500);

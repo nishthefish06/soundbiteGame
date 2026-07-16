@@ -1,4 +1,4 @@
-import { GameState, PROMPT_SELECTION_DURATION_MS, RECORDING_DURATION_MS, RECORDING_GRACE_MS, GUESSING_DURATION_MS, REVEAL_DURATION_MS, DISCONNECT_GRACE_MS } from '../game/constants.js';
+import { GameState, PROMPT_SELECTION_DURATION_MS, RECORDING_DURATION_MS, RECORDING_GRACE_MS, GUESSING_DURATION_MS, REVEAL_DURATION_MS, DISCONNECT_GRACE_MS, MAX_CUSTOM_PROMPTS, MAX_CUSTOM_PROMPT_LENGTH } from '../game/constants.js';
 import { redactSnapshotFor, redactGuessFor } from './redact.js';
 import { isProfane } from '../game/profanity.js';
 
@@ -11,6 +11,10 @@ export function attachSocketHandlers(io, manager) {
   const playerSocketIds = new Map(); // playerId -> current socket.id
   const disconnectTimers = new Map(); // playerId -> Timeout
   const roomCleanups = new Map(); // roomCode -> () => void (clears that room's phase timer)
+  // TELEPHONE mode only: the first hop's raw audio, kept around just long
+  // enough to replay next to the prompt at ROUND_REVEAL. Room itself never
+  // touches audio bytes, so this lives here rather than on the Room instance.
+  const telephoneOriginalAudio = new Map(); // roomCode -> { modifier, audio }
 
   function joinRoom(socket, room, playerId, name) {
     // Let Room reject first (e.g. ROOM_FULL) before we touch any socket state.
@@ -46,6 +50,7 @@ export function attachSocketHandlers(io, manager) {
     if (room.playerCount > 0) return;
     roomCleanups.get(room.code)?.();
     roomCleanups.delete(room.code);
+    telephoneOriginalAudio.delete(room.code);
     manager.removeRoom(room.code);
   }
 
@@ -73,7 +78,7 @@ export function attachSocketHandlers(io, manager) {
         assertIdentity(playerId, name);
         const room = manager.createRoom();
         roomCleanups.set(room.code, wirePhaseTimers(room));
-        wireBroadcasts(room, io, playerSocketIds);
+        wireBroadcasts(room, io, playerSocketIds, telephoneOriginalAudio);
         joinRoom(socket, room, playerId, name.trim());
         reply(ack, { ok: true, roomCode: room.code, snapshot: redactSnapshotFor(room.toJSON(), playerId) });
       } catch (err) {
@@ -103,8 +108,8 @@ export function attachSocketHandlers(io, manager) {
 
     socket.on('game:startGame', (payload = {}, ack) => {
       withRoom(socket, ack, (room) => {
-        const { roundCount, mode } = payload;
-        room.startGame(roundCount, mode);
+        const { roundCount, mode, customPrompts } = payload;
+        room.startGame(roundCount, mode, mode === 'CUSTOM' ? sanitizeCustomPrompts(customPrompts) : undefined);
         reply(ack, { ok: true });
       });
     });
@@ -128,7 +133,11 @@ export function attachSocketHandlers(io, manager) {
       withRoom(socket, ack, (room) => {
         const { modifier, audio } = payload;
         if (!audio) throw new Error('MISSING_AUDIO');
+        // Capture before submitRecording() mutates chainIndex — this is only
+        // true for TELEPHONE mode's very first hop, the one the originator sees.
+        const isChainOriginHop = room.currentMode === 'TELEPHONE' && room.chainIndex === 0;
         room.submitRecording(socket.data.playerId, modifier);
+        if (isChainOriginHop) telephoneOriginalAudio.set(room.code, { modifier, audio });
         socket.to(room.code).emit('game:audioBroadcast', { modifier, audio });
         reply(ack, { ok: true });
       });
@@ -178,10 +187,10 @@ export function attachSocketHandlers(io, manager) {
       clear();
       if (next === GameState.PROMPT_SELECTION) {
         phaseTimer = setTimeout(
-          () => safely(() => room.selectPrompt(room.actorId, room.promptOptions[0])),
+          () => safely(() => room.selectPrompt(room.actorId, room.promptOptions[0].text)),
           PROMPT_SELECTION_DURATION_MS,
         );
-      } else if (next === GameState.ACTOR_RECORDING) {
+      } else if (next === GameState.ACTOR_RECORDING || next === GameState.RELAY_RECORDING) {
         phaseTimer = setTimeout(
           () => safely(() => room.abortRound()),
           RECORDING_DURATION_MS + RECORDING_GRACE_MS,
@@ -199,7 +208,7 @@ export function attachSocketHandlers(io, manager) {
 
 // Broadcast wiring: relays Room events out to sockets, redacting per-viewer
 // where the payload would otherwise leak the answer.
-function wireBroadcasts(room, io, playerSocketIds) {
+function wireBroadcasts(room, io, playerSocketIds, telephoneOriginalAudio) {
   room.on('playersChanged', ({ players }) => {
     io.to(room.code).emit('room:playersChanged', players);
   });
@@ -209,7 +218,15 @@ function wireBroadcasts(room, io, playerSocketIds) {
     io.to(room.code).emit('game:guess', redactGuessFor(guess, player));
   });
 
-  room.on('stateChange', ({ snapshot }) => {
+  room.on('stateChange', ({ next, snapshot }) => {
+    if (next === GameState.ROUND_REVEAL) {
+      const original = telephoneOriginalAudio.get(room.code);
+      if (original) {
+        io.to(room.code).emit('game:originalAudioReveal', original);
+        telephoneOriginalAudio.delete(room.code);
+      }
+    }
+
     for (const player of room.playerList) {
       const socketId = playerSocketIds.get(player.id);
       if (socketId) {
@@ -217,6 +234,23 @@ function wireBroadcasts(room, io, playerSocketIds) {
       }
     }
   });
+}
+
+// Trims/dedupes/caps the host's freeform prompt list before it ever reaches
+// Room.startGame — Room only checks the resulting count (NOT_ENOUGH_CUSTOM_PROMPTS),
+// it doesn't know about raw payload hygiene or profanity.
+function sanitizeCustomPrompts(customPrompts) {
+  if (!Array.isArray(customPrompts)) throw new Error('INVALID_CUSTOM_PROMPTS');
+
+  const cleaned = [...new Set(customPrompts.map((p) => (typeof p === 'string' ? p.trim() : '')).filter(Boolean))].slice(
+    0,
+    MAX_CUSTOM_PROMPTS,
+  );
+
+  if (cleaned.some((p) => p.length > MAX_CUSTOM_PROMPT_LENGTH)) throw new Error('CUSTOM_PROMPT_TOO_LONG');
+  if (cleaned.some((p) => isProfane(p))) throw new Error('CUSTOM_PROMPT_NOT_ALLOWED');
+
+  return cleaned;
 }
 
 function assertIdentity(playerId, name) {

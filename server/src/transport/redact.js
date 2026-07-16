@@ -5,14 +5,22 @@ import { GameState } from '../game/constants.js';
 // promptOptions (the 3 choices offered during selection) are never anyone's
 // business but the actor's, in any phase. Kept separate from Room so the
 // state machine itself never has to reason about "who is this being sent to."
+//
+// In TELEPHONE mode `actorId` cycles through the whole relay chain as hops
+// pass, but only the chain's first member (chainOrder[0], the originator)
+// ever actually saw the prompt — every other hop only ever hears audio. So
+// "who can see the prompt" is the originator specifically, not whoever
+// currently holds the mic. chainOrder is empty for every other mode, where
+// this falls back to today's actorId-based rule.
 export function redactSnapshotFor(snapshot, viewerId) {
-  const isActor = viewerId === snapshot.actorId;
+  const originatorId = snapshot.chainOrder?.length > 0 ? snapshot.chainOrder[0] : snapshot.actorId;
+  const isOriginator = viewerId === originatorId;
   const isRevealed = snapshot.state === GameState.ROUND_REVEAL;
 
   return {
     ...snapshot,
-    currentPrompt: isActor || isRevealed ? snapshot.currentPrompt : null,
-    promptOptions: isActor ? snapshot.promptOptions : [],
+    currentPrompt: isOriginator || isRevealed ? snapshot.currentPrompt : null,
+    promptOptions: isOriginator ? snapshot.promptOptions : [],
   };
 }
 

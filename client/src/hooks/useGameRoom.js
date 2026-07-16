@@ -10,10 +10,12 @@ export function useGameRoom(socket, playerId) {
   const [snapshot, setSnapshot] = useState(null);
   const [chat, setChat] = useState([]);
   const [incomingAudio, setIncomingAudio] = useState(null); // { modifier, url }
+  const [originalAudio, setOriginalAudio] = useState(null); // { modifier, url } — TELEPHONE mode's reveal-time replay of hop 1
   const [error, setError] = useState(null);
   const [phaseEnteredAt, setPhaseEnteredAt] = useState(null);
 
   const incomingAudioUrlRef = useRef(null);
+  const originalAudioUrlRef = useRef(null);
   const lastRoundRef = useRef(null);
 
   useEffect(() => {
@@ -24,6 +26,10 @@ export function useGameRoom(socket, playerId) {
         lastRoundRef.current = newSnapshot.roundNumber;
         setChat([]);
         setIncomingAudio((prev) => {
+          if (prev) URL.revokeObjectURL(prev.url);
+          return null;
+        });
+        setOriginalAudio((prev) => {
           if (prev) URL.revokeObjectURL(prev.url);
           return null;
         });
@@ -46,25 +52,37 @@ export function useGameRoom(socket, playerId) {
       });
     }
 
+    function onOriginalAudioReveal({ modifier, audio }) {
+      const url = URL.createObjectURL(new Blob([audio], { type: 'audio/wav' }));
+      setOriginalAudio((prev) => {
+        if (prev) URL.revokeObjectURL(prev.url);
+        return { modifier, url };
+      });
+    }
+
     socket.on('game:stateChanged', onStateChanged);
     socket.on('room:playersChanged', onPlayersChanged);
     socket.on('game:guess', onGuess);
     socket.on('game:audioBroadcast', onAudioBroadcast);
+    socket.on('game:originalAudioReveal', onOriginalAudioReveal);
     return () => {
       socket.off('game:stateChanged', onStateChanged);
       socket.off('room:playersChanged', onPlayersChanged);
       socket.off('game:guess', onGuess);
       socket.off('game:audioBroadcast', onAudioBroadcast);
+      socket.off('game:originalAudioReveal', onOriginalAudioReveal);
     };
   }, [socket]);
 
   useEffect(
     () => () => {
       if (incomingAudioUrlRef.current) URL.revokeObjectURL(incomingAudioUrlRef.current);
+      if (originalAudioUrlRef.current) URL.revokeObjectURL(originalAudioUrlRef.current);
     },
     [],
   );
   incomingAudioUrlRef.current = incomingAudio?.url ?? null;
+  originalAudioUrlRef.current = originalAudio?.url ?? null;
 
   const createRoom = useCallback(
     (name) =>
@@ -108,6 +126,10 @@ export function useGameRoom(socket, playerId) {
             if (prev) URL.revokeObjectURL(prev.url);
             return null;
           });
+          setOriginalAudio((prev) => {
+            if (prev) URL.revokeObjectURL(prev.url);
+            return null;
+          });
           setPhaseEnteredAt(null);
           lastRoundRef.current = null;
           resolve(res);
@@ -117,10 +139,10 @@ export function useGameRoom(socket, playerId) {
   );
 
   const startGame = useCallback(
-    (roundCount, mode) =>
+    (roundCount, mode, customPrompts) =>
       new Promise((resolve) => {
         setError(null);
-        socket.emit('game:startGame', { roundCount, mode }, (res) => {
+        socket.emit('game:startGame', { roundCount, mode, customPrompts }, (res) => {
           if (!res.ok) setError(res.error);
           resolve(res);
         });
@@ -180,9 +202,13 @@ export function useGameRoom(socket, playerId) {
     snapshot,
     chat,
     incomingAudio,
+    originalAudio,
     error,
     phaseEnteredAt,
     isActor: Boolean(snapshot && snapshot.actorId === playerId),
+    // TELEPHONE mode: true for every relay-chain member, not just whoever
+    // currently holds the mic — none of them can guess this round.
+    isChainMember: Boolean(snapshot?.chainOrder?.includes(playerId)),
     createRoom,
     joinRoom,
     leaveRoom,
