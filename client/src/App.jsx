@@ -11,11 +11,13 @@ import { RelayRecordingView } from './components/RelayRecordingView.jsx';
 import { GuesserWaitingView } from './components/GuesserWaitingView.jsx';
 import { GuessingView } from './components/GuessingView.jsx';
 import { ActorListeningView } from './components/ActorListeningView.jsx';
+import { RatingView } from './components/RatingView.jsx';
+import { ActorAwaitingRatingView } from './components/ActorAwaitingRatingView.jsx';
 import { RoundRevealView } from './components/RoundRevealView.jsx';
 import { GameOverView } from './components/GameOverView.jsx';
 import { HowToPlayModal } from './components/HowToPlayModal.jsx';
 import { CopyIcon, CheckIcon } from './components/icons.jsx';
-import { GUESSING_DURATION_MS, VALID_ROUND_COUNTS, GAME_MODES } from './gameConstants.js';
+import { GUESSING_DURATION_MS, RATING_DURATION_MS, VALID_ROUND_COUNTS, GAME_MODES } from './gameConstants.js';
 import { friendlyError } from './errorMessages.js';
 
 export default function App() {
@@ -24,6 +26,7 @@ export default function App() {
   const { snapshot } = game;
 
   const guessingRemainingMs = useCountdown(game.phaseEnteredAt, GUESSING_DURATION_MS);
+  const ratingRemainingMs = useCountdown(game.phaseEnteredAt, RATING_DURATION_MS);
 
   // Lifted out of LobbyView so a "Play again" (which unmounts/remounts it)
   // doesn't reset the host back to the defaults every time.
@@ -44,6 +47,7 @@ export default function App() {
 
   const actor = snapshot.players.find((p) => p.id === snapshot.actorId);
   const guessingSecondsLeft = snapshot.state === 'GUESSING_ACTIVE' ? Math.ceil(guessingRemainingMs / 1000) : null;
+  const ratingSecondsLeft = snapshot.state === 'RATING_ACTIVE' ? Math.ceil(ratingRemainingMs / 1000) : null;
 
   function renderPhase() {
     switch (snapshot.state) {
@@ -120,6 +124,18 @@ export default function App() {
           />
         );
       }
+
+      case 'RATING_ACTIVE':
+        return game.isActor ? (
+          <ActorAwaitingRatingView secondsLeft={ratingSecondsLeft} ratingProgress={game.ratingProgress} />
+        ) : (
+          <RatingView
+            incomingAudio={game.incomingAudio}
+            secondsLeft={ratingSecondsLeft}
+            ratingProgress={game.ratingProgress}
+            onSubmitRating={game.submitRating}
+          />
+        );
 
       case 'ROUND_REVEAL':
         return (
