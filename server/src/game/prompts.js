@@ -1,6 +1,7 @@
 export const PromptCategory = Object.freeze({
   SOUND_EFFECT: 'SOUND_EFFECT',
   CHARACTER: 'CHARACTER',
+  PERFORMANCE: 'PERFORMANCE',
 });
 
 // A prompt's `text` is both what the actor sees to act out and the primary
@@ -233,9 +234,52 @@ const CHARACTER_PROMPTS = [
   p('Forrest Gump', 'forrest'),
 ];
 
+// PERFORMANCE mode: the actor acts these out with their voice and other
+// players rate the performance, so — unlike the other categories — there's
+// no guess to match. text is just the scenario shown to the actor; no
+// synonyms needed.
+const PERFORMANCE_PROMPTS = [
+  p('A flamingo trying to parallel park'),
+  p('Breaking up with your Wi-Fi router'),
+  p('A raccoon applying for a bank loan'),
+  p('Defusing a bomb made of jello'),
+  p('A ghost who is afraid of the dark'),
+  p('Teaching a fish to ride a bicycle'),
+  p('A pirate ordering a salad'),
+  p('Explaining Wi-Fi to a caveman'),
+  p('A superhero whose power is mild disappointment'),
+  p('A vampire who is allergic to garlic bread specifically'),
+  p('Winning the lottery and immediately regretting it'),
+  p('A cowboy discovering email'),
+  p("Auditioning to be the office printer's replacement"),
+  p('A dinosaur trying on skinny jeans'),
+  p('Negotiating a hostage situation with a toddler'),
+  p('A snowman on vacation in Miami'),
+  p('Proposing marriage to a vending machine'),
+  p('A knight who forgot his sword at home'),
+  p("An alien's first day working at a coffee shop"),
+  p('A grandma who just discovered TikTok'),
+  p('A mime having a really bad day'),
+  p('Convincing a cat to take a bath'),
+  p('A robot learning to slow dance'),
+  p('Escaping a maze made of spaghetti'),
+  p('A wizard whose spells only make things slightly damp'),
+  p('A shark trying to use a treadmill'),
+  p('Explaining why you are late using only interpretive dance logic'),
+  p('A mummy unwrapping itself for a job interview'),
+  p('Losing an arm-wrestling match to a toddler'),
+  p('A scarecrow auditioning for a boy band'),
+  p('Trying to return a live octopus to a store'),
+  p('A dragon with a fear of heights'),
+  p('An overly dramatic weather forecaster during a light drizzle'),
+  p('A cat burglar who is actually terrified of cats'),
+  p('Teaching a toddler how to file taxes'),
+];
+
 const PROMPTS_BY_CATEGORY = {
   [PromptCategory.SOUND_EFFECT]: SOUND_EFFECT_PROMPTS,
   [PromptCategory.CHARACTER]: CHARACTER_PROMPTS,
+  [PromptCategory.PERFORMANCE]: PERFORMANCE_PROMPTS,
 };
 
 // Game modes are 1:1 with prompt categories — picking a mode just picks which

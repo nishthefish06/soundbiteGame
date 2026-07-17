@@ -31,6 +31,11 @@ const ERROR_MESSAGES = {
   ACTOR_CANNOT_GUESS: "You can't guess on your own turn.",
   ALREADY_GUESSED_CORRECTLY: 'You already guessed this one right!',
 
+  // Rating (Showtime mode)
+  ACTOR_CANNOT_RATE: "You can't rate your own performance.",
+  INVALID_RATING: 'Pick a star rating from 1 to 5.',
+  ALREADY_RATED: 'You already rated this one!',
+
   // Rare/defensive — shouldn't come up through normal use of the UI
   UNKNOWN_PLAYER: 'Something went wrong — try refreshing the page.',
   INVALID_PLAYER_ID: 'Something went wrong — try refreshing the page.',

@@ -21,6 +21,9 @@ export function redactSnapshotFor(snapshot, viewerId) {
     ...snapshot,
     currentPrompt: isOriginator || isRevealed ? snapshot.currentPrompt : null,
     promptOptions: isOriginator ? snapshot.promptOptions : [],
+    // PERFORMANCE mode: individual star ratings must stay hidden from
+    // everyone — actor included — until reveal, same as the prompt itself.
+    ratings: isRevealed ? snapshot.ratings : [],
   };
 }
 

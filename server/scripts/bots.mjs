@@ -11,6 +11,10 @@
 // silent — they don't know the real prompt when a human is Actor, so
 // there's nothing honest for them to guess. That leaves the round to end
 // via your own correct guess or the 60s guessing timeout, same as a real game.
+// In PERFORMANCE mode there's no "honest" answer to withhold either way
+// (it's a rating, not a guess), so bots auto-submit a random 1-5 star
+// rating instead of staying silent — otherwise a solo session could never
+// reach ROUND_REVEAL without waiting out the full rating timer.
 import { io } from 'socket.io-client';
 
 const [roomCode, countArg] = process.argv.slice(2);
@@ -68,6 +72,15 @@ function makeBot(name) {
         const audio = makeDummyWavBuffer();
         socket.emit('game:submitRecording', { modifier, audio }, (res) => {
           if (!res.ok) console.log(`[${name}] submitRecording failed: ${res.error}`);
+        });
+      }, 500);
+    }
+
+    if (snapshot.state === 'RATING_ACTIVE' && snapshot.actorId !== playerId) {
+      const stars = 1 + Math.floor(Math.random() * 5);
+      setTimeout(() => {
+        socket.emit('game:submitRating', { stars }, (res) => {
+          if (!res.ok) console.log(`[${name}] submitRating failed: ${res.error}`);
         });
       }, 500);
     }

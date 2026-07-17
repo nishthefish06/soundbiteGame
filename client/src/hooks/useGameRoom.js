@@ -26,6 +26,7 @@ export function useGameRoom(socket, playerId) {
   const [chat, setChat] = useState([]);
   const [incomingAudio, setIncomingAudio] = useState(null); // { modifier, url }
   const [originalAudio, setOriginalAudio] = useState(null); // { modifier, url } — TELEPHONE mode's reveal-time replay of hop 1
+  const [ratingProgress, setRatingProgress] = useState(null); // { count, total } — PERFORMANCE mode's live "N of M rated" headcount
   const [error, setError] = useState(null);
   const [phaseEnteredAt, setPhaseEnteredAt] = useState(null);
 
@@ -51,6 +52,7 @@ export function useGameRoom(socket, playerId) {
           if (prev) URL.revokeObjectURL(prev.url);
           return null;
         });
+        setRatingProgress(null);
       }
     }
 
@@ -78,17 +80,23 @@ export function useGameRoom(socket, playerId) {
       });
     }
 
+    function onRatingProgress({ count, total }) {
+      setRatingProgress({ count, total });
+    }
+
     socket.on('game:stateChanged', onStateChanged);
     socket.on('room:playersChanged', onPlayersChanged);
     socket.on('game:guess', onGuess);
     socket.on('game:audioBroadcast', onAudioBroadcast);
     socket.on('game:originalAudioReveal', onOriginalAudioReveal);
+    socket.on('game:ratingProgress', onRatingProgress);
     return () => {
       socket.off('game:stateChanged', onStateChanged);
       socket.off('room:playersChanged', onPlayersChanged);
       socket.off('game:guess', onGuess);
       socket.off('game:audioBroadcast', onAudioBroadcast);
       socket.off('game:originalAudioReveal', onOriginalAudioReveal);
+      socket.off('game:ratingProgress', onRatingProgress);
     };
   }, [socket]);
 
@@ -150,6 +158,7 @@ export function useGameRoom(socket, playerId) {
             if (prev) URL.revokeObjectURL(prev.url);
             return null;
           });
+          setRatingProgress(null);
           setPhaseEnteredAt(null);
           lastTurnRef.current = null;
           clearRoomCodeInUrl();
@@ -219,11 +228,23 @@ export function useGameRoom(socket, playerId) {
     [socket],
   );
 
+  const submitRating = useCallback(
+    (stars) =>
+      new Promise((resolve) => {
+        socket.emit('game:submitRating', { stars }, (res) => {
+          if (!res.ok) setError(res.error);
+          resolve(res);
+        });
+      }),
+    [socket],
+  );
+
   return {
     snapshot,
     chat,
     incomingAudio,
     originalAudio,
+    ratingProgress,
     error,
     phaseEnteredAt,
     isActor: Boolean(snapshot && snapshot.actorId === playerId),
@@ -238,5 +259,6 @@ export function useGameRoom(socket, playerId) {
     selectPrompt,
     submitRecording,
     submitGuess,
+    submitRating,
   };
 }
