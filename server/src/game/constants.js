@@ -7,6 +7,9 @@ export const GameState = Object.freeze({
   // it (never the original prompt, only the actual originator sees that).
   RELAY_RECORDING: 'RELAY_RECORDING',
   GUESSING_ACTIVE: 'GUESSING_ACTIVE',
+  // PERFORMANCE mode only: other players rate the actor's performance 1-5
+  // stars instead of guessing a prompt — no correct answer, so no guess chat.
+  RATING_ACTIVE: 'RATING_ACTIVE',
   ROUND_REVEAL: 'ROUND_REVEAL',
   GAME_OVER: 'GAME_OVER',
 });
@@ -24,6 +27,7 @@ export const PROMPT_OPTIONS_COUNT = 3;
 export const PROMPT_SELECTION_DURATION_MS = 15_000;
 export const RECORDING_DURATION_MS = 30_000;
 export const GUESSING_DURATION_MS = 60_000;
+export const RATING_DURATION_MS = 30_000;
 export const REVEAL_DURATION_MS = 8_000;
 
 // Transport-layer grace periods (not used by the pure state machine itself).
@@ -60,6 +64,13 @@ export const MAX_SPEED_BONUS = 50;
 // long game doesn't let one player's streak bonus dwarf the base points.
 export const STREAK_BONUS_PER_LEVEL = 10;
 export const MAX_STREAK_LEVEL = 5;
+
+// PERFORMANCE mode: the actor's round score is their average star rating
+// (1-5) times this, rounded — a perfect 5-star average nets 200, comparable
+// to a well-guessed round elsewhere (100 base + up to 50 speed + bonuses).
+export const MIN_RATING = 1;
+export const MAX_RATING = 5;
+export const POINTS_PER_STAR = 40;
 
 // A custom-prompt game needs at least enough prompts to fill one round's
 // options; there's no server-side category to fall back on.

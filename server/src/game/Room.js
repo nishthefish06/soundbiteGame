@@ -14,6 +14,9 @@ import {
   MAX_STREAK_LEVEL,
   MIN_CUSTOM_PROMPTS,
   TELEPHONE_MODIFIER,
+  MIN_RATING,
+  MAX_RATING,
+  POINTS_PER_STAR,
 } from './constants.js';
 import { GAME_MODES, createPromptDeck, createPromptDecks } from './prompts.js';
 
@@ -25,6 +28,11 @@ import { GAME_MODES, createPromptDeck, createPromptDecks } from './prompts.js';
 const CUSTOM_MODE = 'CUSTOM';
 const TELEPHONE_MODE = 'TELEPHONE';
 const TELEPHONE_SOURCE_CATEGORY = 'SOUND_EFFECT';
+
+// Unlike CUSTOM/TELEPHONE, PERFORMANCE *is* a real prompt category (see
+// prompts.js) and needs no special-casing for prompt sourcing — this
+// constant exists only for the rating-flow branches below.
+const PERFORMANCE_MODE = 'PERFORMANCE';
 
 // Pure, transport-agnostic game state machine for a single room.
 // Holds no socket/timer references; the transport layer wires timers
@@ -63,6 +71,7 @@ export class Room {
     this.guessingStartedAt = null;
     this.guesses = [];
     this.correctGuesserIds = new Set();
+    this.ratings = []; // PERFORMANCE mode only: [{ playerId, stars }]
   }
 
   on(event, listener) {
@@ -212,6 +221,13 @@ export class Room {
       return;
     }
 
+    if (this.currentMode === PERFORMANCE_MODE) {
+      // No guessing, no speed bonus — the round's score comes entirely from
+      // the average star rating once everyone's voted (see _finishRating()).
+      this._transition(GameState.RATING_ACTIVE);
+      return;
+    }
+
     this.guessingStartedAt = Date.now();
     this._transition(GameState.GUESSING_ACTIVE);
   }
@@ -264,6 +280,33 @@ export class Room {
     this._transition(GameState.ROUND_REVEAL);
   }
 
+  // PERFORMANCE mode only: a rater scores the actor's performance 1-5 stars.
+  // Unlike submitGuess, this never scores the rater — only the actor, once
+  // every rating is in (see _finishRating()).
+  submitRating(playerId, stars) {
+    this._assertState(GameState.RATING_ACTIVE);
+    if (!this.players.has(playerId)) throw new Error('UNKNOWN_PLAYER');
+    if (this._performerIds().has(playerId)) throw new Error('ACTOR_CANNOT_RATE');
+    if (!Number.isInteger(stars) || stars < MIN_RATING || stars > MAX_RATING) {
+      throw new Error('INVALID_RATING');
+    }
+    if (this.ratings.some((r) => r.playerId === playerId)) throw new Error('ALREADY_RATED');
+
+    this.ratings.push({ playerId, stars });
+    const total = this.playerCount - this._performerIds().size;
+    this.emitter.emit('ratingProgress', { room: this.code, count: this.ratings.length, total });
+
+    if (this.ratings.length >= total) {
+      this._finishRating();
+    }
+  }
+
+  // Called by the transport layer when the rating timer runs out.
+  endRating() {
+    this._assertState(GameState.RATING_ACTIVE);
+    this._finishRating();
+  }
+
   // Continues to the next round, or ends the game if that was the last one.
   finishReveal() {
     this._assertState(GameState.ROUND_REVEAL);
@@ -296,6 +339,7 @@ export class Room {
       promptOptions: this.promptOptions,
       currentPrompt: this.currentPrompt,
       correctGuesserIds: [...this.correctGuesserIds],
+      ratings: this.ratings,
       players: this.playerList.map(({ id, name, score, connected, streak }) => ({
         id,
         name,
@@ -374,6 +418,7 @@ export class Room {
     this.guessingStartedAt = null;
     this.guesses = [];
     this.correctGuesserIds = new Set();
+    this.ratings = [];
 
     this._transition(GameState.PROMPT_SELECTION);
   }
@@ -388,11 +433,28 @@ export class Room {
     return Math.round(MAX_SPEED_BONUS * remainingFrac);
   }
 
+  // PERFORMANCE mode only: once every rater has voted (or the rating timer
+  // ran out), score the actor off the average and move to reveal. Zero
+  // ratings (everyone eligible left mid-round) scores nothing rather than
+  // throwing.
+  _finishRating() {
+    const average =
+      this.ratings.length > 0 ? this.ratings.reduce((sum, r) => sum + r.stars, 0) / this.ratings.length : 0;
+    const actor = this.players.get(this.actorId);
+    if (actor) actor.score += Math.round(average * POINTS_PER_STAR);
+    this._emitPlayersChanged();
+    this._transition(GameState.ROUND_REVEAL);
+  }
+
   // Called once a round's guessing has actually concluded (not when a round
   // is skipped/aborted before anyone got to guess). Guessers who nailed this
   // round build their streak; everyone else's resets. Performers don't guess
   // this round, so their streak carries over untouched.
   _updateStreaks() {
+    // PERFORMANCE mode raters aren't guessing anything right or wrong, so
+    // streaks (a guessing-mode concept) don't apply here.
+    if (this.currentMode === PERFORMANCE_MODE) return;
+
     const performers = this._performerIds();
     for (const player of this.playerList) {
       if (performers.has(player.id)) continue;
@@ -421,6 +483,7 @@ export class Room {
     this.guessingStartedAt = null;
     this.guesses = [];
     this.correctGuesserIds = new Set();
+    this.ratings = [];
   }
 
   _resetGame() {
