@@ -1,4 +1,4 @@
-import { GameState, PROMPT_SELECTION_DURATION_MS, RECORDING_DURATION_MS, RECORDING_GRACE_MS, GUESSING_DURATION_MS, REVEAL_DURATION_MS, DISCONNECT_GRACE_MS, MAX_CUSTOM_PROMPTS, MAX_CUSTOM_PROMPT_LENGTH } from '../game/constants.js';
+import { GameState, PROMPT_SELECTION_DURATION_MS, RECORDING_PREP_DURATION_MS, RECORDING_DURATION_MS, RECORDING_GRACE_MS, GUESSING_DURATION_MS, REVEAL_DURATION_MS, DISCONNECT_GRACE_MS, MAX_CUSTOM_PROMPTS, MAX_CUSTOM_PROMPT_LENGTH } from '../game/constants.js';
 import { redactSnapshotFor, redactGuessFor } from './redact.js';
 import { isProfane } from '../game/profanity.js';
 
@@ -191,9 +191,12 @@ export function attachSocketHandlers(io, manager) {
           PROMPT_SELECTION_DURATION_MS,
         );
       } else if (next === GameState.ACTOR_RECORDING || next === GameState.RELAY_RECORDING) {
+        // Budget covers both the planning window and the recording itself —
+        // the phase timer starts the moment the prompt/audio is shown, before
+        // the actor has even hit Record.
         phaseTimer = setTimeout(
           () => safely(() => room.abortRound()),
-          RECORDING_DURATION_MS + RECORDING_GRACE_MS,
+          RECORDING_PREP_DURATION_MS + RECORDING_DURATION_MS + RECORDING_GRACE_MS,
         );
       } else if (next === GameState.GUESSING_ACTIVE) {
         phaseTimer = setTimeout(() => safely(() => room.endGuessing()), GUESSING_DURATION_MS);

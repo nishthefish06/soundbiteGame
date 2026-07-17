@@ -30,7 +30,7 @@ export function RoundRevealView({ snapshot, phaseEnteredAt, originalAudio }) {
         <p className="muted">Nobody guessed it this round.</p>
       )}
 
-      <p className="muted">Next round in {Math.ceil(remainingMs / 1000)}s…</p>
+      <p className="muted">Next turn in {Math.ceil(remainingMs / 1000)}s…</p>
     </div>
   );
 }

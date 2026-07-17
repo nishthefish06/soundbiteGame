@@ -31,14 +31,17 @@ export function useGameRoom(socket, playerId) {
 
   const incomingAudioUrlRef = useRef(null);
   const originalAudioUrlRef = useRef(null);
-  const lastRoundRef = useRef(null);
+  // Keyed on turnNumber, not roundNumber — a round is now every player
+  // getting a turn, so roundNumber only changes once per full cycle. Each
+  // individual actor's turn still needs its own fresh chat/audio state.
+  const lastTurnRef = useRef(null);
 
   useEffect(() => {
     function onStateChanged(newSnapshot) {
       setSnapshot(newSnapshot);
       setPhaseEnteredAt(Date.now());
-      if (newSnapshot.roundNumber !== lastRoundRef.current) {
-        lastRoundRef.current = newSnapshot.roundNumber;
+      if (newSnapshot.turnNumber !== lastTurnRef.current) {
+        lastTurnRef.current = newSnapshot.turnNumber;
         setChat([]);
         setIncomingAudio((prev) => {
           if (prev) URL.revokeObjectURL(prev.url);
@@ -148,7 +151,7 @@ export function useGameRoom(socket, playerId) {
             return null;
           });
           setPhaseEnteredAt(null);
-          lastRoundRef.current = null;
+          lastTurnRef.current = null;
           clearRoomCodeInUrl();
           resolve(res);
         });
