@@ -4,7 +4,8 @@ const MODE_BLURBS = [
   ['SOUND_EFFECT', 'Sound Effect', 'Make the sound with your own voice — no words, just noise.'],
   ['CHARACTER', 'Character', "Do your best impression of who you're given."],
   ['CUSTOM', 'Custom', "Guess the host's own prompts — inside jokes, anything goes."],
-  ['TELEPHONE', 'Telephone', 'The prompt gets relayed (and mangled) hop to hop before everyone guesses the original.'],
+  ['TELEPHONE', 'Telephone', 'The prompt gets relayed (and distorted) person to person before everyone guesses the original.'],
+  ['PERFORMANCE', 'Showtime', "Act out a wacky prompt with your voice — everyone else rates the performance 1-5 stars."],
 ];
 
 export function HowToPlayModal({ onClose }) {

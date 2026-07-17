@@ -142,6 +142,14 @@ export function CopyIcon(props) {
   );
 }
 
+export function StarIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+      <path d="M12 2.5l2.9 6.4 6.9.7-5.2 4.8 1.5 6.9L12 17.8l-6.1 3.5 1.5-6.9-5.2-4.8 6.9-.7z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function CheckIcon(props) {
   return (
     <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
@@ -155,6 +163,7 @@ export const MODE_ICONS = {
   CHARACTER: CharacterIcon,
   CUSTOM: CustomIcon,
   TELEPHONE: TelephoneIcon,
+  PERFORMANCE: StarIcon,
 };
 
 export const MODIFIER_ICONS = {

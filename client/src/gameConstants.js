@@ -5,6 +5,7 @@ export const PROMPT_OPTIONS_COUNT = 3;
 export const PROMPT_SELECTION_DURATION_MS = 15_000;
 export const RECORDING_DURATION_MS = 30_000;
 export const GUESSING_DURATION_MS = 60_000;
+export const RATING_DURATION_MS = 30_000;
 export const REVEAL_DURATION_MS = 8_000;
 
 export const MIN_PLAYERS = 3;
@@ -19,10 +20,11 @@ export const MAX_CUSTOM_PROMPTS = 50;
 // list comes from the host at game-start time, TELEPHONE deals from the
 // Sound Effect pool but plays out as a relay chain instead of one recording)
 // — display metadata only.
-export const GAME_MODES = ['SOUND_EFFECT', 'CHARACTER', 'CUSTOM', 'TELEPHONE'];
+export const GAME_MODES = ['SOUND_EFFECT', 'CHARACTER', 'CUSTOM', 'TELEPHONE', 'PERFORMANCE'];
 export const GAME_MODE_META = {
   SOUND_EFFECT: { label: 'Sound Effect' },
   CHARACTER: { label: 'Character' },
   CUSTOM: { label: 'Custom' },
   TELEPHONE: { label: 'Telephone' },
+  PERFORMANCE: { label: 'Showtime' },
 };
