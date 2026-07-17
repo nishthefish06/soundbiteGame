@@ -1,4 +1,4 @@
-import { GameState, PROMPT_SELECTION_DURATION_MS, RECORDING_DURATION_MS, RECORDING_GRACE_MS, GUESSING_DURATION_MS, REVEAL_DURATION_MS, DISCONNECT_GRACE_MS, MAX_CUSTOM_PROMPTS, MAX_CUSTOM_PROMPT_LENGTH } from '../game/constants.js';
+import { GameState, PROMPT_SELECTION_DURATION_MS, RECORDING_DURATION_MS, RECORDING_GRACE_MS, GUESSING_DURATION_MS, RATING_DURATION_MS, REVEAL_DURATION_MS, DISCONNECT_GRACE_MS, MAX_CUSTOM_PROMPTS, MAX_CUSTOM_PROMPT_LENGTH } from '../game/constants.js';
 import { redactSnapshotFor, redactGuessFor } from './redact.js';
 import { isProfane } from '../game/profanity.js';
 
@@ -153,6 +153,14 @@ export function attachSocketHandlers(io, manager) {
       });
     });
 
+    socket.on('game:submitRating', (payload = {}, ack) => {
+      withRoom(socket, ack, (room) => {
+        const { stars } = payload;
+        room.submitRating(socket.data.playerId, stars);
+        reply(ack, { ok: true });
+      });
+    });
+
     socket.on('disconnect', () => {
       const { playerId, roomCode } = socket.data;
       if (!playerId || !roomCode) return;
@@ -197,6 +205,8 @@ export function attachSocketHandlers(io, manager) {
         );
       } else if (next === GameState.GUESSING_ACTIVE) {
         phaseTimer = setTimeout(() => safely(() => room.endGuessing()), GUESSING_DURATION_MS);
+      } else if (next === GameState.RATING_ACTIVE) {
+        phaseTimer = setTimeout(() => safely(() => room.endRating()), RATING_DURATION_MS);
       } else if (next === GameState.ROUND_REVEAL) {
         phaseTimer = setTimeout(() => safely(() => room.finishReveal()), REVEAL_DURATION_MS);
       }
@@ -216,6 +226,12 @@ function wireBroadcasts(room, io, playerSocketIds, telephoneOriginalAudio) {
   room.on('guess', ({ guess }) => {
     const player = room.players.get(guess.playerId);
     io.to(room.code).emit('game:guess', redactGuessFor(guess, player));
+  });
+
+  // Just a live headcount ("3 of 5 have rated") — never the star values
+  // themselves, so no redaction is needed here.
+  room.on('ratingProgress', ({ count, total }) => {
+    io.to(room.code).emit('game:ratingProgress', { count, total });
   });
 
   room.on('stateChange', ({ next, snapshot }) => {
