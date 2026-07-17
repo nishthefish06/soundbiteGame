@@ -79,6 +79,7 @@ export default function App() {
             prompt={snapshot.currentPrompt}
             onSubmitRecording={game.submitRecording}
             forcedModifier={snapshot.currentMode === 'TELEPHONE' ? 'DISTORT' : null}
+            phaseEnteredAt={game.phaseEnteredAt}
           />
         ) : (
           <GuesserWaitingView actorName={actor?.name ?? 'The actor'} />
@@ -86,7 +87,11 @@ export default function App() {
 
       case 'RELAY_RECORDING':
         return game.isActor ? (
-          <RelayRecordingView incomingAudio={game.incomingAudio} onSubmitRecording={game.submitRecording} />
+          <RelayRecordingView
+            incomingAudio={game.incomingAudio}
+            onSubmitRecording={game.submitRecording}
+            phaseEnteredAt={game.phaseEnteredAt}
+          />
         ) : (
           <GuesserWaitingView
             actorName={actor?.name ?? 'The next player'}
