@@ -1104,3 +1104,78 @@ h1, h2 {
   color: var(--accent);
   margin-top: 0.15rem;
 }
+
+/* ---------- secret minigame ---------- */
+
+.minigame-card {
+  max-width: 380px;
+}
+
+.minigame-hud {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.minigame-hud strong {
+  color: var(--text);
+}
+
+.minigame-field {
+  position: relative;
+  height: 320px;
+  border: 3px solid var(--ink);
+  border-radius: var(--radius);
+  background-color: var(--bg-alt);
+  background-image: radial-gradient(var(--surface) 2.5px, transparent 2.5px);
+  background-size: 22px 22px;
+  overflow: hidden;
+}
+
+.minigame-target {
+  position: absolute;
+  top: -14%;
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0.35rem;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  animation-name: mic-fall;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  filter: drop-shadow(2px 2px 0 var(--ink));
+}
+.minigame-target svg {
+  width: 100%;
+  height: 100%;
+}
+.minigame-target:active {
+  transform: scale(1.2);
+}
+
+@keyframes mic-fall {
+  from { top: -14%; }
+  to { top: 108%; }
+}
+
+.minigame-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(12, 15, 46, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+}
+
+.minigame-overlay-score {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  color: var(--accent);
+}

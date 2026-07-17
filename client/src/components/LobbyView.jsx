@@ -86,7 +86,7 @@ export function LobbyView({
             className="input custom-prompts-textarea"
             value={customText}
             onChange={(e) => onCustomTextChange(e.target.value)}
-            placeholder={"e.g.\nDad's terrible fishing story\nOur inside joke about the road trip"}
+            placeholder={"e.g.\nSound effects from your favorite game\nYour friend group's inside joke\nA popular TikTok sound"}
             rows={5}
           />
           <span className="muted custom-prompts-count">
