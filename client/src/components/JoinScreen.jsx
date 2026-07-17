@@ -3,6 +3,7 @@ import { getRecentRooms, forgetRoom } from '../recentRooms.js';
 import { MicIcon } from './icons.jsx';
 import { HowToPlayModal } from './HowToPlayModal.jsx';
 import { MicDropGame } from './MicDropGame.jsx';
+import { PracticeModeView } from './PracticeModeView.jsx';
 
 // Five logo taps within 1.5s unlocks the hidden minigame.
 const SECRET_TAP_COUNT = 5;
@@ -21,6 +22,7 @@ export function JoinScreen({ onCreate, onJoin, error }) {
   const [recentRooms, setRecentRooms] = useState(getRecentRooms);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showMinigame, setShowMinigame] = useState(false);
+  const [showPractice, setShowPractice] = useState(false);
   const logoTaps = useRef([]);
 
   function handleLogoClick() {
@@ -72,9 +74,14 @@ export function JoinScreen({ onCreate, onJoin, error }) {
           <MicIcon className="logo-icon" /> Soundbite
         </h1>
         <p className="tagline">Make some noise. Hope your friends understand you.</p>
-        <button type="button" className="how-to-play-link" onClick={() => setShowHowToPlay(true)}>
-          How to play
-        </button>
+        <div className="join-links">
+          <button type="button" className="how-to-play-link" onClick={() => setShowHowToPlay(true)}>
+            How to play
+          </button>
+          <button type="button" className="how-to-play-link" onClick={() => setShowPractice(true)}>
+            Practice recording with effects
+          </button>
+        </div>
 
         <label className="field">
           <span className="field-label">Your name</span>
@@ -135,6 +142,7 @@ export function JoinScreen({ onCreate, onJoin, error }) {
 
       {showHowToPlay && <HowToPlayModal onClose={() => setShowHowToPlay(false)} />}
       {showMinigame && <MicDropGame onClose={() => setShowMinigame(false)} />}
+      {showPractice && <PracticeModeView onClose={() => setShowPractice(false)} />}
     </div>
   );
 }
