@@ -27,5 +27,5 @@ export const GAME_MODE_META = {
   CHARACTER: { label: 'Character' },
   CUSTOM: { label: 'Custom' },
   TELEPHONE: { label: 'Telephone' },
-  PERFORMANCE: { label: 'Showtime' },
+  PERFORMANCE: { label: 'Act It Out' },
 };

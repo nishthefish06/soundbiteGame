@@ -5,7 +5,7 @@ const MODE_BLURBS = [
   ['CHARACTER', 'Character', "Do your best impression of who you're given."],
   ['CUSTOM', 'Custom', "Guess the host's own prompts — inside jokes, anything goes."],
   ['TELEPHONE', 'Telephone', 'The prompt gets relayed (and distorted) person to person before everyone guesses the original.'],
-  ['PERFORMANCE', 'Showtime', "Act out a wacky prompt with your voice — everyone else rates the performance 1-5 stars."],
+  ['PERFORMANCE', 'Act It Out', "Act out a wacky prompt with your voice — everyone else rates the performance 1-5 stars."],
 ];
 
 export function HowToPlayModal({ onClose }) {

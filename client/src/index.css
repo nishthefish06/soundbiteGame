@@ -924,7 +924,7 @@ h1, h2 {
   color: var(--text-muted);
 }
 
-/* ---------- rating (Showtime mode) ---------- */
+/* ---------- rating (Act It Out mode) ---------- */
 
 .rating-form {
   display: flex;
