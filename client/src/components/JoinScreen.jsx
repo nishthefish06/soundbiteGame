@@ -1,7 +1,12 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { getRecentRooms, forgetRoom } from '../recentRooms.js';
 import { MicIcon } from './icons.jsx';
 import { HowToPlayModal } from './HowToPlayModal.jsx';
+import { MicDropGame } from './MicDropGame.jsx';
+
+// Five logo taps within 1.5s unlocks the hidden minigame.
+const SECRET_TAP_COUNT = 5;
+const SECRET_TAP_WINDOW_MS = 1500;
 
 // Prefills the room code from a shared invite link (?room=XXXX) — see the
 // header's "Copy invite" button in App.jsx, which is what generates these.
@@ -15,6 +20,20 @@ export function JoinScreen({ onCreate, onJoin, error }) {
   const [busy, setBusy] = useState(false);
   const [recentRooms, setRecentRooms] = useState(getRecentRooms);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
+  const [showMinigame, setShowMinigame] = useState(false);
+  const logoTaps = useRef([]);
+
+  function handleLogoClick() {
+    const now = Date.now();
+    const recentTaps = logoTaps.current.filter((t) => now - t < SECRET_TAP_WINDOW_MS);
+    recentTaps.push(now);
+    if (recentTaps.length >= SECRET_TAP_COUNT) {
+      logoTaps.current = [];
+      setShowMinigame(true);
+    } else {
+      logoTaps.current = recentTaps;
+    }
+  }
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -49,7 +68,7 @@ export function JoinScreen({ onCreate, onJoin, error }) {
   return (
     <div className="join-screen">
       <div className="join-card card">
-        <h1 className="logo">
+        <h1 className="logo" onClick={handleLogoClick}>
           <MicIcon className="logo-icon" /> Soundbite
         </h1>
         <p className="tagline">Make some noise. Hope your friends understand you.</p>
@@ -115,6 +134,7 @@ export function JoinScreen({ onCreate, onJoin, error }) {
       </div>
 
       {showHowToPlay && <HowToPlayModal onClose={() => setShowHowToPlay(false)} />}
+      {showMinigame && <MicDropGame onClose={() => setShowMinigame(false)} />}
     </div>
   );
 }
