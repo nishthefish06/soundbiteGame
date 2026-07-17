@@ -56,6 +56,10 @@ export function LobbyView({
               </button>
             ))}
           </div>
+          <span className="muted rounds-hint">
+            Every player gets a turn as the Actor each round — that's {roundCount * playerCount} turn
+            {roundCount * playerCount === 1 ? '' : 's'} total.
+          </span>
         </div>
 
         <div className="lobby-setup-group">

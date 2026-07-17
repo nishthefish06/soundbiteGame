@@ -25,15 +25,21 @@ export const VALID_ROUND_COUNTS = Object.freeze([1, 3, 5]);
 
 export const PROMPT_OPTIONS_COUNT = 3;
 export const PROMPT_SELECTION_DURATION_MS = 15_000;
+// Time to plan before recording starts — reading the prompt, picking a voice
+// effect, deciding what to do — kept separate from RECORDING_DURATION_MS so
+// planning time doesn't eat into the actual clip length.
+export const RECORDING_PREP_DURATION_MS = 15_000;
+// Max length of the actual recorded clip, once the actor hits Record.
 export const RECORDING_DURATION_MS = 30_000;
 export const GUESSING_DURATION_MS = 60_000;
 export const RATING_DURATION_MS = 30_000;
 export const REVEAL_DURATION_MS = 8_000;
 
 // Transport-layer grace periods (not used by the pure state machine itself).
-// Extra time allowed past RECORDING_DURATION_MS before the server force-aborts
-// a round where the actor never submitted (e.g. they went AFK or disconnected
-// without triggering the removePlayer path yet).
+// Extra time allowed past RECORDING_PREP_DURATION_MS + RECORDING_DURATION_MS
+// before the server force-aborts a round where the actor never submitted
+// (e.g. they went AFK or disconnected without triggering the removePlayer
+// path yet).
 export const RECORDING_GRACE_MS = 5_000;
 // How long a disconnected player's seat is held before they're removed for good.
 export const DISCONNECT_GRACE_MS = 30_000;

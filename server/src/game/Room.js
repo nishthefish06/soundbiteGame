@@ -40,9 +40,10 @@ const PERFORMANCE_MODE = 'PERFORMANCE';
 // events emitted here out over Socket.io.
 //
 // Hierarchy: a Room hosts a series of Games (one at a time); a Game is a
-// fixed number of Rounds all played in the same mode. LOBBY is where a game
-// gets configured and started; GAME_OVER is where one just ended and the
-// room decides whether to configure another.
+// fixed number of Rounds all played in the same mode, and a Round is every
+// current player getting one Turn as the actor. LOBBY is where a game gets
+// configured and started; GAME_OVER is where one just ended and the room
+// decides whether to configure another.
 export class Room {
   constructor(code) {
     this.code = code;
@@ -72,6 +73,15 @@ export class Room {
     this.guesses = [];
     this.correctGuesserIds = new Set();
     this.ratings = []; // PERFORMANCE mode only: [{ playerId, stars }]
+    // Monotonic count of actor turns since the game started — never resets
+    // at a round boundary, unlike roundNumber. Lets the transport/client
+    // layers detect "a new turn just began" independent of round semantics.
+    this.turnNumber = 0;
+    // Player ids who've already been the actor (or TELEPHONE originator)
+    // this round — a round is "everyone gets a turn once", so a new round
+    // begins exactly when the next player in line has already gone. See
+    // _peekStartsNewRound().
+    this.actorsThisRound = new Set();
   }
 
   on(event, listener) {
@@ -127,13 +137,14 @@ export class Room {
     this._emitPlayersChanged();
   }
 
-  // Skips the current round without awarding anything, then continues the
-  // game (next round) or ends it, same as a normal reveal would. Used when
-  // the actor disconnects, or by the transport layer as a server-side
-  // backstop if the actor never submits in time.
+  // Skips the current turn without awarding anything, then continues the
+  // game (next turn, possibly starting a new round) or ends it, same as a
+  // normal reveal would. Used when the actor disconnects, or by the
+  // transport layer as a server-side backstop if the actor never submits in
+  // time.
   abortRound() {
     if (this.state === GameState.LOBBY || this.state === GameState.GAME_OVER) return;
-    this._advanceRoundOrEndGame();
+    this._advanceTurnOrEndGame();
   }
 
   markDisconnected(id) {
@@ -153,7 +164,10 @@ export class Room {
   // -- game/round flow --
 
   // Configures and kicks off a new game: a fixed number of rounds, all in the
-  // same mode. Scores reset — each game is its own contest.
+  // same mode. A round is one full cycle of every player getting a turn as
+  // the actor (see _startNextTurn()/_peekStartsNewRound()) — totalRounds is
+  // how many such cycles to play, not a raw turn count. Scores reset — each
+  // game is its own contest.
   startGame(totalRounds, mode, customPrompts = []) {
     this._assertState(GameState.LOBBY);
     if (this.playerCount < MIN_PLAYERS) {
@@ -177,13 +191,15 @@ export class Room {
     this.totalRounds = totalRounds;
     this.currentMode = mode;
     this.roundNumber = 0;
+    this.turnNumber = 0;
+    this.actorsThisRound = new Set();
     for (const player of this.playerList) {
       player.score = 0;
       player.streak = 0;
     }
     this._emitPlayersChanged();
 
-    this._startNextRound();
+    this._startNextTurn();
   }
 
   selectPrompt(actorId, promptText) {
@@ -307,11 +323,12 @@ export class Room {
     this._finishRating();
   }
 
-  // Continues to the next round, or ends the game if that was the last one.
+  // Continues to the next turn (possibly starting a new round), or ends the
+  // game if that was the last turn of the last round.
   finishReveal() {
     this._assertState(GameState.ROUND_REVEAL);
     this._updateStreaks();
-    this._advanceRoundOrEndGame();
+    this._advanceTurnOrEndGame();
   }
 
   // From GAME_OVER, back to LOBBY to configure another game in this room.
@@ -332,6 +349,7 @@ export class Room {
       state: this.state,
       totalRounds: this.totalRounds,
       roundNumber: this.roundNumber,
+      turnNumber: this.turnNumber,
       currentMode: this.currentMode,
       actorId: this.actorId,
       chainOrder: this.chainOrder,
@@ -384,8 +402,23 @@ export class Room {
     return this.currentMode === TELEPHONE_MODE ? new Set(this.chainOrder) : new Set([this.actorId]);
   }
 
-  _startNextRound() {
-    this.roundNumber += 1;
+  // A new round begins exactly when the next player in the rotation has
+  // already been the actor this round — i.e. everyone currently in the room
+  // has had a turn and we're about to wrap back around. Also true for the
+  // very first turn of the game. Peeking (rather than checking after
+  // advancing) lets both _startNextTurn() and _advanceTurnOrEndGame() ask
+  // "is what comes next a new round?" without side effects.
+  _peekStartsNewRound() {
+    if (this.roundNumber === 0) return true;
+    return this.actorsThisRound.has(this.actorOrder[0]);
+  }
+
+  _startNextTurn() {
+    if (this._peekStartsNewRound()) {
+      this.roundNumber += 1;
+      this.actorsThisRound = new Set();
+    }
+    this.turnNumber += 1;
 
     if (this.currentMode === TELEPHONE_MODE) {
       this._advanceChain(this._telephoneChainLength());
@@ -394,6 +427,7 @@ export class Room {
       this.chainIndex = 0;
       this._advanceActor();
     }
+    this.actorsThisRound.add(this.actorId);
 
     if (this.currentMode === CUSTOM_MODE) {
       if (this.customPromptDeck.length < PROMPT_OPTIONS_COUNT) {
@@ -463,12 +497,17 @@ export class Room {
     this._emitPlayersChanged();
   }
 
-  _advanceRoundOrEndGame() {
-    if (this.roundNumber < this.totalRounds) {
-      this._startNextRound();
-    } else {
+  // Ends the game only once the last round is fully done — i.e. totalRounds
+  // has been reached AND the upcoming turn would otherwise start a round
+  // that was never configured. Mid-round (someone in the current round
+  // hasn't gone yet), the game always continues even if roundNumber already
+  // equals totalRounds.
+  _advanceTurnOrEndGame() {
+    if (this.roundNumber >= this.totalRounds && this._peekStartsNewRound()) {
       this._resetRound();
       this._transition(GameState.GAME_OVER);
+    } else {
+      this._startNextTurn();
     }
   }
 
@@ -490,6 +529,8 @@ export class Room {
     this.totalRounds = 0;
     this.currentMode = null;
     this.roundNumber = 0;
+    this.turnNumber = 0;
+    this.actorsThisRound = new Set();
     this._resetRound();
   }
 

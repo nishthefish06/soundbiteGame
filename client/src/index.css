@@ -655,6 +655,12 @@ h1, h2 {
   gap: 0.6rem;
 }
 
+.rounds-hint {
+  max-width: 220px;
+  text-align: center;
+  font-size: 0.78rem;
+}
+
 .pill-option {
   --tilt: -1.5deg;
   display: inline-flex;

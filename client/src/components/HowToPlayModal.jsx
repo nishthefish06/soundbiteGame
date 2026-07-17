@@ -18,9 +18,9 @@ export function HowToPlayModal({ onClose }) {
 
         <ol className="how-to-play-steps">
           <li>Get everyone into the same room, then start a game.</li>
-          <li>Each round, one player — the Actor — gets a secret prompt and records it through a disguised voice effect.</li>
+          <li>Each round, everyone takes a turn as the Actor — get a secret prompt and record it through a disguised voice effect.</li>
           <li>Everyone else hears only the disguised recording and guesses what the prompt was.</li>
-          <li>Guess fast for a bigger bonus, and keep a streak going across rounds for even more.</li>
+          <li>Guess fast for a bigger bonus, and keep a streak going across turns for even more.</li>
         </ol>
 
         <p className="eyebrow">Modes</p>
