@@ -109,7 +109,12 @@ export function attachSocketHandlers(io, manager) {
     socket.on('game:startGame', (payload = {}, ack) => {
       withRoom(socket, ack, (room) => {
         const { roundCount, mode, customPrompts } = payload;
-        room.startGame(roundCount, mode, mode === 'CUSTOM' ? sanitizeCustomPrompts(customPrompts) : undefined);
+        room.startGame(
+          socket.data.playerId,
+          roundCount,
+          mode,
+          mode === 'CUSTOM' ? sanitizeCustomPrompts(customPrompts) : undefined,
+        );
         reply(ack, { ok: true });
       });
     });
@@ -157,6 +162,43 @@ export function attachSocketHandlers(io, manager) {
       withRoom(socket, ack, (room) => {
         const { stars } = payload;
         room.submitRating(socket.data.playerId, stars);
+        reply(ack, { ok: true });
+      });
+    });
+
+    socket.on('game:kickPlayer', (payload = {}, ack) => {
+      withRoom(socket, ack, (room) => {
+        const { targetId } = payload;
+        room.kickPlayer(socket.data.playerId, targetId);
+
+        // The kicked player's own socket stays connected as far as
+        // Socket.IO is concerned — without this, they'd just silently stop
+        // receiving updates instead of being told why.
+        const targetSocketId = playerSocketIds.get(targetId);
+        if (targetSocketId) {
+          io.to(targetSocketId).emit('room:kicked');
+          const targetSocket = io.sockets.sockets.get(targetSocketId);
+          if (targetSocket) {
+            targetSocket.leave(room.code);
+            delete targetSocket.data.playerId;
+            delete targetSocket.data.roomCode;
+          }
+          playerSocketIds.delete(targetId);
+        }
+        const pendingDisconnect = disconnectTimers.get(targetId);
+        if (pendingDisconnect) {
+          clearTimeout(pendingDisconnect);
+          disconnectTimers.delete(targetId);
+        }
+
+        reply(ack, { ok: true });
+      });
+    });
+
+    socket.on('game:transferHost', (payload = {}, ack) => {
+      withRoom(socket, ack, (room) => {
+        const { targetId } = payload;
+        room.transferHost(socket.data.playerId, targetId);
         reply(ack, { ok: true });
       });
     });
@@ -235,6 +277,10 @@ function wireBroadcasts(room, io, playerSocketIds, telephoneOriginalAudio) {
   // themselves, so no redaction is needed here.
   room.on('ratingProgress', ({ count, total }) => {
     io.to(room.code).emit('game:ratingProgress', { count, total });
+  });
+
+  room.on('hostChanged', ({ hostId }) => {
+    io.to(room.code).emit('room:hostChanged', hostId);
   });
 
   room.on('stateChange', ({ next, snapshot }) => {

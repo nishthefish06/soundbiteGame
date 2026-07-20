@@ -30,7 +30,7 @@ function pickPrompt(room) {
 }
 
 function startGameAndPickPrompt(room, rounds = 3, mode = GAME_MODES[0]) {
-  room.startGame(rounds, mode);
+  room.startGame(room.hostId, rounds, mode);
   return pickPrompt(room);
 }
 
@@ -42,29 +42,29 @@ test('starts in LOBBY with no players', () => {
 
 test('startGame rejects below MIN_PLAYERS', () => {
   const room = makeRoom(2);
-  assert.throws(() => room.startGame(3, GAME_MODES[0]), /NOT_ENOUGH_PLAYERS/);
+  assert.throws(() => room.startGame(room.hostId, 3, GAME_MODES[0]), /NOT_ENOUGH_PLAYERS/);
 });
 
 test('startGame rejects an invalid round count', () => {
   const room = makeRoom(3);
-  assert.throws(() => room.startGame(4, GAME_MODES[0]), /INVALID_ROUND_COUNT/);
+  assert.throws(() => room.startGame(room.hostId, 4, GAME_MODES[0]), /INVALID_ROUND_COUNT/);
 });
 
 test('startGame rejects an invalid mode', () => {
   const room = makeRoom(3);
-  assert.throws(() => room.startGame(VALID_ROUND_COUNTS[0], 'NOT_A_MODE'), /INVALID_MODE/);
+  assert.throws(() => room.startGame(room.hostId, VALID_ROUND_COUNTS[0], 'NOT_A_MODE'), /INVALID_MODE/);
 });
 
 test('startGame in CUSTOM mode rejects too few custom prompts', () => {
   const room = makeRoom(3);
-  assert.throws(() => room.startGame(3, 'CUSTOM', ['only', 'two']), /NOT_ENOUGH_CUSTOM_PROMPTS/);
-  assert.throws(() => room.startGame(3, 'CUSTOM'), /NOT_ENOUGH_CUSTOM_PROMPTS/, 'missing array entirely');
+  assert.throws(() => room.startGame(room.hostId, 3, 'CUSTOM', ['only', 'two']), /NOT_ENOUGH_CUSTOM_PROMPTS/);
+  assert.throws(() => room.startGame(room.hostId, 3, 'CUSTOM'), /NOT_ENOUGH_CUSTOM_PROMPTS/, 'missing array entirely');
 });
 
 test('startGame in CUSTOM mode deals rounds from the submitted prompt list', () => {
   const room = makeRoom(3);
   const submitted = ['Dad joke', 'Inside joke', 'Road trip story'];
-  room.startGame(3, 'CUSTOM', submitted);
+  room.startGame(room.hostId, 3, 'CUSTOM', submitted);
 
   assert.equal(room.state, GameState.PROMPT_SELECTION);
   assert.equal(room.currentMode, 'CUSTOM');
@@ -78,7 +78,7 @@ test('startGame in CUSTOM mode deals rounds from the submitted prompt list', () 
 test('startGame in CUSTOM mode reshuffles the submitted list once it runs out', () => {
   const room = makeRoom(3);
   const submitted = ['Only', 'Three', 'Prompts']; // exactly PROMPT_OPTIONS_COUNT — every round exhausts and must reshuffle
-  room.startGame(5, 'CUSTOM', submitted);
+  room.startGame(room.hostId, 5, 'CUSTOM', submitted);
 
   for (let round = 0; round < 5; round += 1) {
     assert.equal(room.promptOptions.length, PROMPT_OPTIONS_COUNT, `round ${round + 1} should still offer a full set of options`);
@@ -95,7 +95,7 @@ test('startGame in CUSTOM mode reshuffles the submitted list once it runs out', 
 test('startGame configures totalRounds/mode and deals the first round\'s prompts', () => {
   const room = makeRoom(3);
   const [mode] = GAME_MODES;
-  room.startGame(5, mode);
+  room.startGame(room.hostId, 5, mode);
 
   assert.equal(room.state, GameState.PROMPT_SELECTION);
   assert.equal(room.totalRounds, 5);
@@ -115,19 +115,19 @@ test('startGame resets everyone\'s score for the new game', () => {
   const [firstId] = room.playerList.map((p) => p.id);
   room.players.get(firstId).score = 999;
 
-  room.startGame(3, GAME_MODES[0]);
+  room.startGame(room.hostId, 3, GAME_MODES[0]);
   assert.equal(room.players.get(firstId).score, 0);
 });
 
 test('selectPrompt rejects a choice that was not offered', () => {
   const room = makeRoom(3);
-  room.startGame(3, GAME_MODES[0]);
+  room.startGame(room.hostId, 3, GAME_MODES[0]);
   assert.throws(() => room.selectPrompt(room.actorId, 'not a real option'), /INVALID_PROMPT_CHOICE/);
 });
 
 test('selectPrompt rejects a non-actor', () => {
   const room = makeRoom(3);
-  room.startGame(3, GAME_MODES[0]);
+  room.startGame(room.hostId, 3, GAME_MODES[0]);
   const [otherId] = room.playerList.map((p) => p.id).filter((id) => id !== room.actorId);
   assert.throws(() => room.selectPrompt(otherId, room.promptOptions[0].text), /NOT_ACTOR/);
 });
@@ -150,7 +150,7 @@ test('finishReveal moves to the next turn, staying in the same round until every
 
 test('a round ends and the next one begins only once every player has had a turn', () => {
   const room = makeRoom(3);
-  room.startGame(5, GAME_MODES[0]);
+  room.startGame(room.hostId, 5, GAME_MODES[0]);
   const firstActor = room.actorId;
 
   // Play out the other 2 players' turns — still round 1 the whole time.
@@ -174,7 +174,7 @@ test('a round ends and the next one begins only once every player has had a turn
 
 test('every player gets exactly one turn per round, in rotation, regardless of room size', () => {
   const room = makeRoom(5);
-  room.startGame(3, GAME_MODES[0]);
+  room.startGame(room.hostId, 3, GAME_MODES[0]);
 
   const actorsSeenThisRound = [];
   for (let turn = 0; turn < 5; turn += 1) {
@@ -196,7 +196,7 @@ test('every player gets exactly one turn per round, in rotation, regardless of r
 test('finishReveal ends the game after the last round (every player has acted totalRounds times)', () => {
   const room = makeRoom(3);
   const totalRounds = 3;
-  room.startGame(totalRounds, GAME_MODES[0]);
+  room.startGame(room.hostId, totalRounds, GAME_MODES[0]);
 
   const totalTurns = totalRounds * room.playerCount; // everyone acts once per round
   for (let turn = 1; turn <= totalTurns; turn += 1) {
@@ -213,7 +213,7 @@ test('finishReveal ends the game after the last round (every player has acted to
 test('returnToLobby resets game state so a new game can be configured', () => {
   const room = makeRoom(3);
   const totalRounds = 3;
-  room.startGame(totalRounds, GAME_MODES[0]);
+  room.startGame(room.hostId, totalRounds, GAME_MODES[0]);
   const totalTurns = totalRounds * room.playerCount;
   for (let turn = 1; turn <= totalTurns; turn += 1) {
     pickPrompt(room);
@@ -231,7 +231,7 @@ test('returnToLobby resets game state so a new game can be configured', () => {
   assert.equal(room.roundNumber, 0);
 
   // A new game can be started right away.
-  room.startGame(5, GAME_MODES[1]);
+  room.startGame(room.hostId, 5, GAME_MODES[1]);
   assert.equal(room.state, GameState.PROMPT_SELECTION);
   assert.equal(room.totalRounds, 5);
   assert.equal(room.currentMode, GAME_MODES[1]);
@@ -302,7 +302,7 @@ test('guessing correctly in consecutive rounds builds a streak bonus', () => {
   // 4 players, 3 rounds: join-order actor rotation makes p0/p1/p2 the actors
   // across these rounds and p3 never comes up — p3 gets to guess every round.
   const room = makeRoom(4);
-  room.startGame(3, GAME_MODES[0]);
+  room.startGame(room.hostId, 3, GAME_MODES[0]);
   const guesserId = 'p3';
 
   const scoresByRound = [];
@@ -375,7 +375,7 @@ test('guess matching accepts a listed synonym, not just the exact prompt text', 
 
 test('selectPrompt populates currentPromptAnswers from the chosen option\'s text and synonyms', () => {
   const room = makeRoom(3);
-  room.startGame(3, GAME_MODES[0]);
+  room.startGame(room.hostId, 3, GAME_MODES[0]);
   const [chosen] = room.promptOptions;
 
   room.selectPrompt(room.actorId, chosen.text);
@@ -439,7 +439,7 @@ test('actor leaving mid-turn skips to the next turn rather than ending the game'
 
 test('actor leaving on the very last turn of the game ends it, rather than trying to start a round that does not exist', () => {
   const room = makeRoom(3);
-  room.startGame(1, GAME_MODES[0]); // 1 round == each of the 3 players gets exactly one turn
+  room.startGame(room.hostId, 1, GAME_MODES[0]); // 1 round == each of the 3 players gets exactly one turn
 
   // Play out everyone's turn except the very last player's.
   for (let turn = 0; turn < 2; turn += 1) {
@@ -475,7 +475,7 @@ test('stateChange and playersChanged events fire', () => {
   room.on('stateChange', (e) => events.push(['stateChange', e.next]));
   room.on('playersChanged', () => events.push(['playersChanged']));
 
-  room.startGame(3, GAME_MODES[0]);
+  room.startGame(room.hostId, 3, GAME_MODES[0]);
   // startGame resets scores (playersChanged) before dealing the first round (stateChange).
   assert.deepEqual(events[0], ['playersChanged']);
   assert.deepEqual(events[1], ['stateChange', GameState.PROMPT_SELECTION]);
@@ -487,7 +487,7 @@ test('TELEPHONE mode chain length scales with room size, always leaving at least
   const expected = { 3: 2, 4: 2, 5: 3, 6: 3, 8: 4 };
   for (const [size, chainLength] of Object.entries(expected)) {
     const room = makeRoom(Number(size));
-    room.startGame(1, 'TELEPHONE');
+    room.startGame(room.hostId, 1, 'TELEPHONE');
     assert.equal(room.chainOrder.length, chainLength, `room of ${size} should have a chain of ${chainLength}`);
     assert.ok(room.chainOrder.length < room.playerCount, 'at least one guesser must remain');
   }
@@ -495,7 +495,7 @@ test('TELEPHONE mode chain length scales with room size, always leaving at least
 
 test('TELEPHONE mode forces the DISTORT modifier and rejects any other', () => {
   const room = makeRoom(4);
-  room.startGame(3, 'TELEPHONE');
+  room.startGame(room.hostId, 3, 'TELEPHONE');
   pickPrompt(room);
   assert.throws(() => room.submitRecording(room.actorId, 'ROBOT'), /INVALID_MODIFIER/);
   room.submitRecording(room.actorId, 'DISTORT'); // should not throw
@@ -504,7 +504,7 @@ test('TELEPHONE mode forces the DISTORT modifier and rejects any other', () => {
 
 test('TELEPHONE mode relays through the whole chain before opening guessing', () => {
   const room = makeRoom(4); // chain length 2
-  room.startGame(3, 'TELEPHONE');
+  room.startGame(room.hostId, 3, 'TELEPHONE');
   const [originator, relayer] = room.chainOrder;
 
   pickPrompt(room);
@@ -520,7 +520,7 @@ test('TELEPHONE mode relays through the whole chain before opening guessing', ()
 
 test('TELEPHONE mode: no chain member can guess, only outsiders can', () => {
   const room = makeRoom(4); // chain length 2 -> 2 guessers
-  room.startGame(3, 'TELEPHONE');
+  room.startGame(room.hostId, 3, 'TELEPHONE');
   const [originator, relayer] = room.chainOrder;
   const guessers = room.playerList.map((p) => p.id).filter((id) => !room.chainOrder.includes(id));
   assert.equal(guessers.length, 2);
@@ -538,7 +538,7 @@ test('TELEPHONE mode: no chain member can guess, only outsiders can', () => {
 
 test('TELEPHONE mode splits the actor-bonus among every chain member on a correct guess', () => {
   const room = makeRoom(4);
-  room.startGame(3, 'TELEPHONE');
+  room.startGame(room.hostId, 3, 'TELEPHONE');
   const [originator, relayer] = room.chainOrder;
   const guesser = room.playerList.map((p) => p.id).find((id) => !room.chainOrder.includes(id));
 
@@ -553,7 +553,7 @@ test('TELEPHONE mode splits the actor-bonus among every chain member on a correc
 
 test('TELEPHONE mode requires everyone outside the chain to guess correctly before revealing', () => {
   const room = makeRoom(4); // chain length 2 -> 2 guessers
-  room.startGame(3, 'TELEPHONE');
+  room.startGame(room.hostId, 3, 'TELEPHONE');
   const [originator, relayer] = room.chainOrder;
   const [guesser1, guesser2] = room.playerList.map((p) => p.id).filter((id) => !room.chainOrder.includes(id));
 
@@ -570,7 +570,7 @@ test('TELEPHONE mode requires everyone outside the chain to guess correctly befo
 
 test('TELEPHONE mode rotates who starts the chain round to round', () => {
   const room = makeRoom(4);
-  room.startGame(3, 'TELEPHONE');
+  room.startGame(room.hostId, 3, 'TELEPHONE');
   const firstChain = [...room.chainOrder];
 
   pickPrompt(room);
@@ -584,7 +584,7 @@ test('TELEPHONE mode rotates who starts the chain round to round', () => {
 
 test('TELEPHONE mode: any chain member disconnecting (not just the current relayer) aborts the round', () => {
   const room = makeRoom(6); // chain length 3
-  room.startGame(3, 'TELEPHONE');
+  room.startGame(room.hostId, 3, 'TELEPHONE');
   assert.equal(room.chainOrder.length, 3);
   const [originator, relayer1, relayer2] = room.chainOrder;
 
@@ -694,7 +694,7 @@ test('PERFORMANCE mode: streaks are not tracked — everyone stays at 0 after re
 
 test('PERFORMANCE mode: a round ends and the next begins only once every player has performed once', () => {
   const room = makeRoom(3);
-  room.startGame(5, 'PERFORMANCE');
+  room.startGame(room.hostId, 5, 'PERFORMANCE');
   const firstActor = room.actorId;
 
   for (let i = 0; i < 2; i += 1) {
@@ -714,4 +714,114 @@ test('PERFORMANCE mode: a round ends and the next begins only once every player 
 
   assert.equal(room.roundNumber, 2, 'round 2 begins once everyone has performed once');
   assert.equal(room.actorId, firstActor, 'the rotation wraps back around to whoever went first');
+});
+
+// ---------- host controls ----------
+
+test('the first player added becomes host', () => {
+  const room = new Room('TEST');
+  assert.equal(room.hostId, null, 'no host until someone joins');
+  room.addPlayer('p0', 'Player0');
+  assert.equal(room.hostId, 'p0');
+  room.addPlayer('p1', 'Player1');
+  assert.equal(room.hostId, 'p0', 'later joiners do not take over host');
+});
+
+test('host reassigns to whoever is left when the host leaves deliberately', () => {
+  const room = makeRoom(3);
+  assert.equal(room.hostId, 'p0');
+  room.removePlayer('p0');
+  assert.equal(room.hostId, 'p1', 'reassigns to the next player in the roster');
+});
+
+test('host reassigns even when the host leaving mid-round also aborts the round', () => {
+  const room = makeRoom(3);
+  startGameAndPickPrompt(room, 3);
+  const hostId = room.hostId;
+  assert.equal(room.actorId, hostId, "round 1's actor is the host (first player, first turn)");
+  room.submitRecording(hostId, 'ROBOT');
+
+  room.removePlayer(hostId);
+
+  assert.notEqual(room.hostId, hostId);
+  assert.equal(room.state, GameState.PROMPT_SELECTION, 'round aborts and moves on as usual');
+});
+
+test('hostId is unaffected by a non-host leaving', () => {
+  const room = makeRoom(3);
+  room.removePlayer('p1');
+  assert.equal(room.hostId, 'p0');
+});
+
+test('a banned (kicked) player cannot rejoin the room', () => {
+  const room = makeRoom(3);
+  room.kickPlayer('p0', 'p1');
+  assert.throws(() => room.addPlayer('p1', 'Player1'), /KICKED/);
+});
+
+test('startGame rejects a non-host requester', () => {
+  const room = makeRoom(3);
+  assert.throws(() => room.startGame('p1', 3, GAME_MODES[0]), /NOT_HOST/);
+  assert.equal(room.state, GameState.LOBBY, 'rejected start leaves the room untouched');
+});
+
+test('kickPlayer removes the target and prevents them from acting again', () => {
+  const room = makeRoom(3);
+  room.kickPlayer(room.hostId, 'p1');
+  assert.equal(room.players.has('p1'), false);
+  assert.equal(room.playerCount, 2);
+});
+
+test('kickPlayer rejects a non-host requester', () => {
+  const room = makeRoom(3);
+  assert.throws(() => room.kickPlayer('p1', 'p2'), /NOT_HOST/);
+});
+
+test('kickPlayer rejects the host trying to kick themselves', () => {
+  const room = makeRoom(3);
+  assert.throws(() => room.kickPlayer(room.hostId, room.hostId), /CANNOT_KICK_SELF/);
+});
+
+test('kickPlayer rejects an unknown target', () => {
+  const room = makeRoom(3);
+  assert.throws(() => room.kickPlayer(room.hostId, 'not-a-real-id'), /UNKNOWN_PLAYER/);
+});
+
+test('transferHost moves hostId to the target', () => {
+  const room = makeRoom(3);
+  room.transferHost(room.hostId, 'p1');
+  assert.equal(room.hostId, 'p1');
+});
+
+test('transferHost rejects a non-host requester', () => {
+  const room = makeRoom(3);
+  assert.throws(() => room.transferHost('p1', 'p2'), /NOT_HOST/);
+});
+
+test('transferHost rejects transferring to the current host', () => {
+  const room = makeRoom(3);
+  assert.throws(() => room.transferHost(room.hostId, room.hostId), /ALREADY_HOST/);
+});
+
+test('transferHost rejects an unknown target', () => {
+  const room = makeRoom(3);
+  assert.throws(() => room.transferHost(room.hostId, 'not-a-real-id'), /UNKNOWN_PLAYER/);
+});
+
+test('host persists across returnToLobby/startGame (a new game in the same room keeps the same host)', () => {
+  const room = makeRoom(3);
+  const hostId = room.hostId;
+  const totalTurns = 3 * room.playerCount;
+  room.startGame(hostId, 3, GAME_MODES[0]);
+  for (let turn = 1; turn <= totalTurns; turn += 1) {
+    pickPrompt(room);
+    room.submitRecording(room.actorId, 'ROBOT');
+    room.endGuessing();
+    room.finishReveal();
+  }
+  assert.equal(room.state, GameState.GAME_OVER);
+
+  room.returnToLobby();
+
+  assert.equal(room.hostId, hostId, 'host carries over into the reconfigured game');
 });

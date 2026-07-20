@@ -572,3 +572,102 @@ test('an actor who never picks a prompt gets one auto-selected after the timeout
     await server.close();
   }
 });
+
+// ---------- host controls ----------
+
+test('game:startGame is rejected for a non-host player', async () => {
+  const server = await startTestServer();
+  try {
+    const host = await makePlayer(server.url, 'Alice');
+    const p2 = await makePlayer(server.url, 'Bob', host.roomCode);
+    const p3 = await makePlayer(server.url, 'Cara', host.roomCode);
+
+    const res = await ack(p2.socket, 'game:startGame', { roundCount: 3, mode: GAME_MODES[0] });
+    assert.equal(res.ok, false);
+    assert.equal(res.error, 'NOT_HOST');
+
+    const room = server.manager.getRoom(host.roomCode);
+    assert.equal(room.state, 'LOBBY');
+
+    for (const p of [host, p2, p3]) p.socket.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('game:kickPlayer removes the target, notifies their socket, and bans them from rejoining', async () => {
+  const server = await startTestServer();
+  try {
+    const host = await makePlayer(server.url, 'Alice');
+    const p2 = await makePlayer(server.url, 'Bob', host.roomCode);
+    const p3 = await makePlayer(server.url, 'Cara', host.roomCode);
+
+    const kickedPromise = waitFor(p2.socket, 'room:kicked');
+    const res = await ack(host.socket, 'game:kickPlayer', { targetId: p2.playerId });
+    assert.equal(res.ok, true);
+    await kickedPromise; // just needs to arrive; no payload to assert on
+
+    const room = server.manager.getRoom(host.roomCode);
+    assert.equal(room.players.has(p2.playerId), false);
+    assert.equal(room.playerCount, 2);
+
+    const rejoinRes = await ack(p2.socket, 'room:join', {
+      playerId: p2.playerId,
+      name: 'Bob',
+      roomCode: host.roomCode,
+    });
+    assert.equal(rejoinRes.ok, false);
+    assert.equal(rejoinRes.error, 'KICKED');
+
+    for (const p of [host, p2, p3]) p.socket.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('game:kickPlayer is rejected for a non-host player', async () => {
+  const server = await startTestServer();
+  try {
+    const host = await makePlayer(server.url, 'Alice');
+    const p2 = await makePlayer(server.url, 'Bob', host.roomCode);
+    const p3 = await makePlayer(server.url, 'Cara', host.roomCode);
+
+    const res = await ack(p2.socket, 'game:kickPlayer', { targetId: p3.playerId });
+    assert.equal(res.ok, false);
+    assert.equal(res.error, 'NOT_HOST');
+
+    for (const p of [host, p2, p3]) p.socket.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('game:transferHost updates hostId and broadcasts room:hostChanged', async () => {
+  const server = await startTestServer();
+  try {
+    const host = await makePlayer(server.url, 'Alice');
+    const p2 = await makePlayer(server.url, 'Bob', host.roomCode);
+    const p3 = await makePlayer(server.url, 'Cara', host.roomCode);
+
+    const hostChangedPromise = waitFor(p2.socket, 'room:hostChanged');
+    const res = await ack(host.socket, 'game:transferHost', { targetId: p2.playerId });
+    assert.equal(res.ok, true);
+    const newHostId = await hostChangedPromise;
+    assert.equal(newHostId, p2.playerId);
+
+    const room = server.manager.getRoom(host.roomCode);
+    assert.equal(room.hostId, p2.playerId);
+
+    // The old host can no longer start the game; the new one can.
+    const oldHostStartRes = await ack(host.socket, 'game:startGame', { roundCount: 3, mode: GAME_MODES[0] });
+    assert.equal(oldHostStartRes.ok, false);
+    assert.equal(oldHostStartRes.error, 'NOT_HOST');
+
+    const newHostStartRes = await ack(p2.socket, 'game:startGame', { roundCount: 3, mode: GAME_MODES[0] });
+    assert.equal(newHostStartRes.ok, true);
+
+    for (const p of [host, p2, p3]) p.socket.close();
+  } finally {
+    await server.close();
+  }
+});
