@@ -14,6 +14,7 @@ import { MODE_ICONS } from './icons.jsx';
 // "Play again" reset the host back to the defaults.
 export function LobbyView({
   snapshot,
+  isHost,
   onStartGame,
   roundCount,
   onRoundCountChange,
@@ -32,6 +33,23 @@ export function LobbyView({
     .filter(Boolean)
     .slice(0, MAX_CUSTOM_PROMPTS);
   const customReady = !isCustom || customPrompts.length >= MIN_CUSTOM_PROMPTS;
+
+  // Non-hosts don't get the config form — the round count/mode a non-host
+  // sees locally isn't synced from the server (nothing broadcasts the
+  // host's in-progress picks), so showing it — even disabled — would risk
+  // looking like a live reflection of what's actually about to start.
+  if (!isHost) {
+    return (
+      <div className="phase-view waiting-view">
+        <div className="pulse-dot" />
+        <h2>Waiting for the host to start the game…</h2>
+        <p className="muted">
+          {playerCount}/{MAX_PLAYERS} players in the room
+          {!canStart && ` — need at least ${MIN_PLAYERS} to start`}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="phase-view lobby-view">

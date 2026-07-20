@@ -51,6 +51,13 @@ export class Room {
 
     this.players = new Map(); // id -> { id, name, score, connected }
     this.actorOrder = []; // rotation queue of player ids
+    // Whoever created/first joined the room; reassigned to whoever's left
+    // when they leave (see removePlayer()). Gates startGame/kickPlayer/
+    // transferHost.
+    this.hostId = null;
+    // Player ids kicked from this room — checked in addPlayer() so a kick
+    // actually sticks instead of the same stable playerId just reconnecting.
+    this.bannedPlayerIds = new Set();
 
     this.state = GameState.LOBBY;
     this.totalRounds = 0;
@@ -108,13 +115,18 @@ export class Room {
     const existing = this.players.get(id);
     if (existing) return existing;
 
+    if (this.bannedPlayerIds.has(id)) {
+      throw new Error('KICKED');
+    }
     if (this.playerCount >= MAX_PLAYERS) {
       throw new Error('ROOM_FULL');
     }
 
+    const isFirstPlayer = this.playerCount === 0;
     const player = { id, name, score: 0, connected: true, streak: 0 };
     this.players.set(id, player);
     this.actorOrder.push(id);
+    if (isFirstPlayer) this.hostId = id;
     this._emitPlayersChanged();
     return player;
   }
@@ -125,8 +137,14 @@ export class Room {
     // In TELEPHONE mode the round depends on every chain member, not just
     // whoever currently holds the mic — any of them leaving breaks the chain.
     const wasPerforming = this.actorId === id || this.chainOrder.includes(id);
+    const wasHost = id === this.hostId;
     this.players.delete(id);
     this.actorOrder = this.actorOrder.filter((pid) => pid !== id);
+
+    if (wasHost) {
+      this.hostId = this.playerList[0]?.id ?? null;
+      this._emitHostChanged();
+    }
 
     if (wasPerforming && this.state !== GameState.LOBBY && this.state !== GameState.GAME_OVER) {
       // Actor/relayer disappeared mid-round: skip this round rather than guess who's next.
@@ -161,15 +179,42 @@ export class Room {
     this._emitPlayersChanged();
   }
 
+  // Removes and bans a player so their stable playerId can't just reconnect
+  // right back in. Reuses removePlayer() for everything else (mid-round
+  // abort, host reassignment if the target somehow held both — can't
+  // actually happen since a host can't kick themselves, but kept in one
+  // place regardless).
+  kickPlayer(requesterId, targetId) {
+    if (requesterId !== this.hostId) throw new Error('NOT_HOST');
+    if (targetId === requesterId) throw new Error('CANNOT_KICK_SELF');
+    if (!this.players.has(targetId)) throw new Error('UNKNOWN_PLAYER');
+
+    this.bannedPlayerIds.add(targetId);
+    this.removePlayer(targetId);
+  }
+
+  transferHost(requesterId, targetId) {
+    if (requesterId !== this.hostId) throw new Error('NOT_HOST');
+    if (!this.players.has(targetId)) throw new Error('UNKNOWN_PLAYER');
+    if (targetId === this.hostId) throw new Error('ALREADY_HOST');
+
+    this.hostId = targetId;
+    this._emitHostChanged();
+  }
+
   // -- game/round flow --
 
   // Configures and kicks off a new game: a fixed number of rounds, all in the
   // same mode. A round is one full cycle of every player getting a turn as
   // the actor (see _startNextTurn()/_peekStartsNewRound()) — totalRounds is
   // how many such cycles to play, not a raw turn count. Scores reset — each
-  // game is its own contest.
-  startGame(totalRounds, mode, customPrompts = []) {
+  // game is its own contest. Host-only, like every other requester-gated
+  // action here.
+  startGame(requesterId, totalRounds, mode, customPrompts = []) {
     this._assertState(GameState.LOBBY);
+    if (requesterId !== this.hostId) {
+      throw new Error('NOT_HOST');
+    }
     if (this.playerCount < MIN_PLAYERS) {
       throw new Error('NOT_ENOUGH_PLAYERS');
     }
@@ -347,6 +392,7 @@ export class Room {
     return {
       code: this.code,
       state: this.state,
+      hostId: this.hostId,
       totalRounds: this.totalRounds,
       roundNumber: this.roundNumber,
       turnNumber: this.turnNumber,
@@ -553,6 +599,14 @@ export class Room {
 
   _emitPlayersChanged() {
     this.emitter.emit('playersChanged', { room: this.code, players: this.playerList });
+  }
+
+  // Separate from _transition()'s 'stateChange' event — re-emitting that
+  // would reset the transport layer's phase timer (see wirePhaseTimers in
+  // socketServer.js) and wrongly restart e.g. an in-progress recording
+  // countdown just because the host changed.
+  _emitHostChanged() {
+    this.emitter.emit('hostChanged', { room: this.code, hostId: this.hostId });
   }
 }
 

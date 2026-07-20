@@ -55,6 +55,7 @@ export default function App() {
         return (
           <LobbyView
             snapshot={snapshot}
+            isHost={game.isHost}
             onStartGame={game.startGame}
             roundCount={lobbyRoundCount}
             onRoundCountChange={setLobbyRoundCount}
@@ -206,6 +207,10 @@ export default function App() {
             actorId={snapshot.actorId}
             correctGuesserIds={snapshot.correctGuesserIds}
             selfId={playerId}
+            hostId={snapshot.hostId}
+            isHost={game.isHost}
+            onKick={game.kickPlayer}
+            onTransferHost={game.transferHost}
           />
         </aside>
       </div>
