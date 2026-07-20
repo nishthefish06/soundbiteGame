@@ -36,6 +36,12 @@ const ERROR_MESSAGES = {
   INVALID_RATING: 'Pick a star rating from 1 to 5.',
   ALREADY_RATED: 'You already rated this one!',
 
+  // Host controls
+  NOT_HOST: 'Only the host can do that.',
+  KICKED: 'You were removed from this room by the host.',
+  CANNOT_KICK_SELF: "You can't kick yourself.",
+  ALREADY_HOST: "They're already the host.",
+
   // Rare/defensive — shouldn't come up through normal use of the UI
   UNKNOWN_PLAYER: 'Something went wrong — try refreshing the page.',
   INVALID_PLAYER_ID: 'Something went wrong — try refreshing the page.',
