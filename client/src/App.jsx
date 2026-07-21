@@ -75,7 +75,14 @@ export default function App() {
             onSelectPrompt={game.selectPrompt}
           />
         ) : (
-          <GuesserWaitingView actorName={actor?.name ?? 'The actor'} action="is picking a prompt" />
+          <GuesserWaitingView
+            actorName={actor?.name ?? 'The actor'}
+            action="is picking a prompt"
+            chainOrder={snapshot.chainOrder}
+            players={snapshot.players}
+            actorId={snapshot.actorId}
+            selfId={playerId}
+          />
         );
 
       case 'ACTOR_RECORDING':
@@ -87,7 +94,13 @@ export default function App() {
             phaseEnteredAt={game.phaseEnteredAt}
           />
         ) : (
-          <GuesserWaitingView actorName={actor?.name ?? 'The actor'} />
+          <GuesserWaitingView
+            actorName={actor?.name ?? 'The actor'}
+            chainOrder={snapshot.chainOrder}
+            players={snapshot.players}
+            actorId={snapshot.actorId}
+            selfId={playerId}
+          />
         );
 
       case 'RELAY_RECORDING':
@@ -102,6 +115,10 @@ export default function App() {
             actorName={actor?.name ?? 'The next player'}
             action="is relaying the sound"
             subtext="Get ready — you might be up next."
+            chainOrder={snapshot.chainOrder}
+            players={snapshot.players}
+            actorId={snapshot.actorId}
+            selfId={playerId}
           />
         );
 
@@ -109,14 +126,16 @@ export default function App() {
         // In TELEPHONE mode nobody who relayed can guess, not just whoever
         // happens to hold the mic right now (the last hop) — chainOrder
         // covers the whole chain; it's empty for every other mode, where
-        // this falls back to the normal single-actor check.
-        const cannotGuess = snapshot.chainOrder.length > 0 ? game.isChainMember : game.isActor;
+        // this falls back to the normal single-actor check. A spectator
+        // (joined mid-game) can't guess either, regardless of mode.
+        const cannotGuess = (snapshot.chainOrder.length > 0 ? game.isChainMember : game.isActor) || game.isSpectating;
         return cannotGuess ? (
           <ActorListeningView
             secondsLeft={guessingSecondsLeft}
             chat={game.chat}
             players={snapshot.players}
             selfId={playerId}
+            isSpectating={game.isSpectating}
           />
         ) : (
           <GuessingView
@@ -132,8 +151,12 @@ export default function App() {
       }
 
       case 'RATING_ACTIVE':
-        return game.isActor ? (
-          <ActorAwaitingRatingView secondsLeft={ratingSecondsLeft} ratingProgress={game.ratingProgress} />
+        return game.isActor || game.isSpectating ? (
+          <ActorAwaitingRatingView
+            secondsLeft={ratingSecondsLeft}
+            ratingProgress={game.ratingProgress}
+            isSpectating={game.isSpectating}
+          />
         ) : (
           <RatingView
             incomingAudio={game.incomingAudio}
@@ -149,7 +172,9 @@ export default function App() {
         );
 
       case 'GAME_OVER':
-        return <GameOverView players={snapshot.players} onPlayAgain={game.playAgain} />;
+        return (
+          <GameOverView players={snapshot.players} roundHistory={game.roundHistory} onPlayAgain={game.playAgain} />
+        );
 
       default:
         return null;
@@ -195,6 +220,12 @@ export default function App() {
       </header>
 
       {showHowToPlay && <HowToPlayModal onClose={() => setShowHowToPlay(false)} />}
+
+      {game.isSpectating && (
+        <div className="banner banner-warning">
+          You joined mid-game — you'll join the rotation next round.
+        </div>
+      )}
 
       {game.error && <div className="banner banner-error">{friendlyError(game.error)}</div>}
 

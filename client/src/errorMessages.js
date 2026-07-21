@@ -30,6 +30,7 @@ const ERROR_MESSAGES = {
   GUESS_NOT_ALLOWED: "That guess isn't allowed here — keep it clean and try again.",
   ACTOR_CANNOT_GUESS: "You can't guess on your own turn.",
   ALREADY_GUESSED_CORRECTLY: 'You already guessed this one right!',
+  SPECTATING: "You joined mid-game — you'll join in next round.",
 
   // Rating (Act It Out mode)
   ACTOR_CANNOT_RATE: "You can't rate your own performance.",

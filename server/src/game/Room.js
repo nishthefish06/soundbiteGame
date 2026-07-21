@@ -123,9 +123,16 @@ export class Room {
     }
 
     const isFirstPlayer = this.playerCount === 0;
-    const player = { id, name, score: 0, connected: true, streak: 0 };
+    // Joining mid-game (not in the lobby between games, and not after one
+    // just ended) makes you a spectator: you can watch but can't guess/rate
+    // until the round already in progress finishes, and you don't enter the
+    // actor rotation until then either (see _startNextTurn's promotion of
+    // spectating players at the next round boundary). Joining in LOBBY/
+    // GAME_OVER is the normal case and needs none of this.
+    const isMidGame = this.state !== GameState.LOBBY && this.state !== GameState.GAME_OVER;
+    const player = { id, name, score: 0, connected: true, streak: 0, spectating: isMidGame };
     this.players.set(id, player);
-    this.actorOrder.push(id);
+    if (!isMidGame) this.actorOrder.push(id);
     if (isFirstPlayer) this.hostId = id;
     this._emitPlayersChanged();
     return player;
@@ -295,8 +302,10 @@ export class Room {
 
   submitGuess(playerId, rawText) {
     this._assertState(GameState.GUESSING_ACTIVE);
-    if (!this.players.has(playerId)) throw new Error('UNKNOWN_PLAYER');
+    const player = this.players.get(playerId);
+    if (!player) throw new Error('UNKNOWN_PLAYER');
     if (this._performerIds().has(playerId)) throw new Error('ACTOR_CANNOT_GUESS');
+    if (player.spectating) throw new Error('SPECTATING');
     if (this.correctGuesserIds.has(playerId)) throw new Error('ALREADY_GUESSED_CORRECTLY');
 
     const guessWords = significantWords(rawText);
@@ -326,7 +335,7 @@ export class Room {
       }
       this._emitPlayersChanged();
 
-      const everyoneGuessed = this.correctGuesserIds.size === this.playerCount - this._performerIds().size;
+      const everyoneGuessed = this.correctGuesserIds.size === this._eligiblePlayerCount();
       if (everyoneGuessed) {
         this._transition(GameState.ROUND_REVEAL);
       }
@@ -346,15 +355,17 @@ export class Room {
   // every rating is in (see _finishRating()).
   submitRating(playerId, stars) {
     this._assertState(GameState.RATING_ACTIVE);
-    if (!this.players.has(playerId)) throw new Error('UNKNOWN_PLAYER');
+    const player = this.players.get(playerId);
+    if (!player) throw new Error('UNKNOWN_PLAYER');
     if (this._performerIds().has(playerId)) throw new Error('ACTOR_CANNOT_RATE');
+    if (player.spectating) throw new Error('SPECTATING');
     if (!Number.isInteger(stars) || stars < MIN_RATING || stars > MAX_RATING) {
       throw new Error('INVALID_RATING');
     }
     if (this.ratings.some((r) => r.playerId === playerId)) throw new Error('ALREADY_RATED');
 
     this.ratings.push({ playerId, stars });
-    const total = this.playerCount - this._performerIds().size;
+    const total = this._eligiblePlayerCount();
     this.emitter.emit('ratingProgress', { room: this.code, count: this.ratings.length, total });
 
     if (this.ratings.length >= total) {
@@ -404,12 +415,13 @@ export class Room {
       currentPrompt: this.currentPrompt,
       correctGuesserIds: [...this.correctGuesserIds],
       ratings: this.ratings,
-      players: this.playerList.map(({ id, name, score, connected, streak }) => ({
+      players: this.playerList.map(({ id, name, score, connected, streak, spectating }) => ({
         id,
         name,
         score,
         connected,
         streak,
+        spectating,
       })),
     };
   }
@@ -425,9 +437,12 @@ export class Room {
   // TELEPHONE mode's chain length scales with room size: roughly half the
   // room relays, half guesses, with at least 2 in the chain (an originator
   // plus one relayer — otherwise there's no "telephone" effect at all) and
-  // always at least 1 player left over to guess.
+  // always at least 1 player left over to guess. Scaled off actorOrder
+  // rather than playerCount — a mid-game spectator isn't in the rotation
+  // yet (see addPlayer()), so they shouldn't inflate the chain length
+  // beyond what _advanceChain() can actually slice out of actorOrder.
   _telephoneChainLength() {
-    const n = this.playerCount;
+    const n = this.actorOrder.length;
     return Math.min(n - 1, Math.max(2, Math.round(n / 2)));
   }
 
@@ -448,6 +463,36 @@ export class Room {
     return this.currentMode === TELEPHONE_MODE ? new Set(this.chainOrder) : new Set([this.actorId]);
   }
 
+  // Players who can currently guess/rate: not a performer this round, and
+  // not still spectating (joined mid-game, waiting for the next round
+  // boundary — see addPlayer()/_promoteSpectators()). Used as the
+  // "everyone's weighed in" denominator for both guessing and rating, since
+  // a spectator structurally can't do either and shouldn't be counted as
+  // someone the round is still waiting on.
+  _eligiblePlayerCount() {
+    const performers = this._performerIds();
+    let count = 0;
+    for (const player of this.playerList) {
+      if (performers.has(player.id) || player.spectating) continue;
+      count += 1;
+    }
+    return count;
+  }
+
+  // Promotes every player who joined mid-game (still `spectating`) into the
+  // actor rotation. Called at the start of a new round so a mid-round joiner
+  // has watched at least one full round before they can be picked as actor.
+  _promoteSpectators() {
+    let promoted = false;
+    for (const player of this.playerList) {
+      if (!player.spectating) continue;
+      player.spectating = false;
+      this.actorOrder.push(player.id);
+      promoted = true;
+    }
+    if (promoted) this._emitPlayersChanged();
+  }
+
   // A new round begins exactly when the next player in the rotation has
   // already been the actor this round — i.e. everyone currently in the room
   // has had a turn and we're about to wrap back around. Also true for the
@@ -463,6 +508,7 @@ export class Room {
     if (this._peekStartsNewRound()) {
       this.roundNumber += 1;
       this.actorsThisRound = new Set();
+      this._promoteSpectators();
     }
     this.turnNumber += 1;
 
@@ -529,7 +575,8 @@ export class Room {
   // Called once a round's guessing has actually concluded (not when a round
   // is skipped/aborted before anyone got to guess). Guessers who nailed this
   // round build their streak; everyone else's resets. Performers don't guess
-  // this round, so their streak carries over untouched.
+  // this round, so their streak carries over untouched — same for
+  // spectators, who structurally couldn't guess either.
   _updateStreaks() {
     // PERFORMANCE mode raters aren't guessing anything right or wrong, so
     // streaks (a guessing-mode concept) don't apply here.
@@ -537,7 +584,7 @@ export class Room {
 
     const performers = this._performerIds();
     for (const player of this.playerList) {
-      if (performers.has(player.id)) continue;
+      if (performers.has(player.id) || player.spectating) continue;
       player.streak = this.correctGuesserIds.has(player.id) ? player.streak + 1 : 0;
     }
     this._emitPlayersChanged();
@@ -577,6 +624,12 @@ export class Room {
     this.roundNumber = 0;
     this.turnNumber = 0;
     this.actorsThisRound = new Set();
+    // A spectator who joined during the *last* round of the game never hits
+    // a round boundary (_startNextTurn/_promoteSpectators) before GAME_OVER,
+    // so without this they'd stay benched forever — never entering
+    // actorOrder even in the next game started in this room. Back in LOBBY,
+    // "mid-game" no longer applies to anyone.
+    this._promoteSpectators();
     this._resetRound();
   }
 

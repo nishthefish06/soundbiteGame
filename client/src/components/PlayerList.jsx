@@ -38,6 +38,11 @@ export function PlayerList({
             </span>
             {p.id === hostId && <span className="badge badge-host" title="Host">👑</span>}
             {p.id === actorId && <span className="badge badge-actor" title="Actor"><MicIcon /></span>}
+            {p.spectating && (
+              <span className="badge badge-spectating" title="Spectating — joins the rotation next round">
+                👀
+              </span>
+            )}
             {correctGuesserIds.includes(p.id) && <span className="badge badge-correct" title="Guessed correctly">✅</span>}
             {!p.connected && <span className="badge badge-offline" title="Disconnected">⚠️</span>}
             {p.streak >= 2 && (

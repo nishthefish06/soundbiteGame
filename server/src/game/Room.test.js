@@ -825,3 +825,165 @@ test('host persists across returnToLobby/startGame (a new game in the same room 
 
   assert.equal(room.hostId, hostId, 'host carries over into the reconfigured game');
 });
+
+// -- spectators (mid-game joins) --
+
+test('joining during LOBBY or GAME_OVER is a normal (non-spectating) join', () => {
+  const lobbyRoom = makeRoom(2);
+  lobbyRoom.addPlayer('joiner', 'Joiner');
+  assert.equal(lobbyRoom.players.get('joiner').spectating, false);
+  assert.ok(lobbyRoom.actorOrder.includes('joiner'));
+
+  const room = makeRoom(3);
+  room.startGame(room.hostId, 1, GAME_MODES[0]);
+  for (let turn = 0; turn < 3; turn += 1) {
+    pickPrompt(room);
+    room.submitRecording(room.actorId, 'ROBOT');
+    room.endGuessing();
+    room.finishReveal();
+  }
+  assert.equal(room.state, GameState.GAME_OVER);
+  room.addPlayer('joiner2', 'Joiner2');
+  assert.equal(room.players.get('joiner2').spectating, false);
+  assert.ok(room.actorOrder.includes('joiner2'));
+});
+
+test('joining mid-game marks the player as spectating and keeps them out of the actor rotation', () => {
+  const room = makeRoom(3);
+  startGameAndPickPrompt(room, 3);
+  room.addPlayer('latecomer', 'Latecomer');
+
+  const player = room.players.get('latecomer');
+  assert.equal(player.spectating, true);
+  assert.ok(!room.actorOrder.includes('latecomer'), 'not in the rotation yet');
+});
+
+test('a spectator cannot guess', () => {
+  const room = makeRoom(3);
+  startGameAndPickPrompt(room, 3);
+  room.addPlayer('latecomer', 'Latecomer');
+  room.submitRecording(room.actorId, 'ROBOT');
+
+  assert.throws(() => room.submitGuess('latecomer', room.currentPrompt), /SPECTATING/);
+});
+
+test('a spectator cannot rate in PERFORMANCE mode', () => {
+  const room = makeRoom(3);
+  startGameAndPickPrompt(room, 3, 'PERFORMANCE');
+  room.addPlayer('latecomer', 'Latecomer');
+  room.submitRecording(room.actorId, 'ROBOT');
+
+  assert.throws(() => room.submitRating('latecomer', 4), /SPECTATING/);
+});
+
+test('a round completes via everyoneGuessed without waiting on a spectator to guess', () => {
+  const room = makeRoom(3);
+  startGameAndPickPrompt(room, 3);
+  room.addPlayer('latecomer', 'Latecomer');
+  room.submitRecording(room.actorId, 'ROBOT');
+
+  const guessers = room.playerList.map((p) => p.id).filter((id) => id !== room.actorId && id !== 'latecomer');
+  assert.equal(guessers.length, 2);
+
+  room.submitGuess(guessers[0], room.currentPrompt);
+  assert.equal(room.state, GameState.GUESSING_ACTIVE, 'still waiting on the second eligible guesser');
+
+  room.submitGuess(guessers[1], room.currentPrompt);
+  assert.equal(
+    room.state,
+    GameState.ROUND_REVEAL,
+    'round ends once both eligible guessers got it — the spectator is not counted in the denominator',
+  );
+});
+
+test('PERFORMANCE mode: rating finishes without waiting on a spectator to rate', () => {
+  const room = makeRoom(3);
+  startGameAndPickPrompt(room, 3, 'PERFORMANCE');
+  room.addPlayer('latecomer', 'Latecomer');
+  room.submitRecording(room.actorId, 'ROBOT');
+
+  const raters = room.playerList.map((p) => p.id).filter((id) => id !== room.actorId && id !== 'latecomer');
+  assert.equal(raters.length, 2);
+
+  room.submitRating(raters[0], 4);
+  assert.equal(room.state, GameState.RATING_ACTIVE);
+
+  room.submitRating(raters[1], 5);
+  assert.equal(
+    room.state,
+    GameState.ROUND_REVEAL,
+    'finishes once both eligible raters voted — the spectator is not counted in the denominator',
+  );
+});
+
+test('TELEPHONE mode chain length is unaffected by a mid-round spectator', () => {
+  const room = makeRoom(4); // chain length 2 with no spectators
+  room.startGame(room.hostId, 3, 'TELEPHONE');
+  const [originator, relayer] = room.chainOrder;
+  pickPrompt(room);
+  room.submitRecording(originator, 'DISTORT');
+  room.submitRecording(relayer, 'DISTORT'); // opens guessing; round 1 not done (2 of 4 have gone)
+
+  room.addPlayer('latecomer', 'Latecomer'); // joins as a spectator mid-round, not in actorOrder
+
+  room.endGuessing();
+  room.finishReveal(); // starts round 1's next turn
+
+  assert.equal(
+    room.chainOrder.length,
+    2,
+    'chain length still derived from the 4 active rotation members, not inflated by the spectator',
+  );
+  assert.ok(!room.chainOrder.includes('latecomer'), 'spectator never dealt into the chain');
+});
+
+test('a spectator is promoted into the rotation at the next round boundary', () => {
+  const room = makeRoom(3);
+  room.startGame(room.hostId, 3, GAME_MODES[0]);
+  room.addPlayer('latecomer', 'Latecomer'); // joins during round 1, before anyone's turn is done
+
+  for (let turn = 1; turn <= 3; turn += 1) {
+    pickPrompt(room);
+    room.submitRecording(room.actorId, 'ROBOT');
+    room.endGuessing();
+    room.finishReveal();
+  }
+
+  const player = room.players.get('latecomer');
+  assert.equal(player.spectating, false, 'promoted once round 1 finished and round 2 began');
+  assert.ok(room.actorOrder.includes('latecomer'));
+});
+
+test('a spectator who joins during the final round is promoted once the room returns to LOBBY', () => {
+  const room = makeRoom(3);
+  room.startGame(room.hostId, 1, GAME_MODES[0]); // 1 round == 3 turns, so this is already the final round
+
+  // Play out the first two turns normally.
+  for (let i = 0; i < 2; i += 1) {
+    pickPrompt(room);
+    room.submitRecording(room.actorId, 'ROBOT');
+    room.endGuessing();
+    room.finishReveal();
+  }
+
+  // Spectator joins during the third and final turn — no future round
+  // boundary will ever come along in this game to promote them via
+  // _startNextTurn's usual path.
+  pickPrompt(room);
+  room.addPlayer('latecomer', 'Latecomer');
+  room.submitRecording(room.actorId, 'ROBOT');
+  room.endGuessing();
+  room.finishReveal();
+
+  assert.equal(room.state, GameState.GAME_OVER);
+  assert.equal(
+    room.players.get('latecomer').spectating,
+    true,
+    'still benched at GAME_OVER — no round boundary occurred',
+  );
+
+  room.returnToLobby();
+
+  assert.equal(room.players.get('latecomer').spectating, false, 'promoted once back in LOBBY');
+  assert.ok(room.actorOrder.includes('latecomer'));
+});
