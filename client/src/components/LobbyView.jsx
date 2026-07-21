@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   MIN_PLAYERS,
   MAX_PLAYERS,
@@ -6,7 +7,9 @@ import {
   GAME_MODE_META,
   MIN_CUSTOM_PROMPTS,
   MAX_CUSTOM_PROMPTS,
+  MAX_CUSTOM_PROMPT_LENGTH,
 } from '../gameConstants.js';
+import { getPromptPacks, savePromptPack, deletePromptPack } from '../promptPacks.js';
 import { MODE_ICONS } from './icons.jsx';
 
 // Round count/mode/custom text are owned by App (not local state here) so
@@ -33,6 +36,27 @@ export function LobbyView({
     .filter(Boolean)
     .slice(0, MAX_CUSTOM_PROMPTS);
   const customReady = !isCustom || customPrompts.length >= MIN_CUSTOM_PROMPTS;
+
+  // Packs live entirely in localStorage — no need to lift this state up to
+  // App.jsx the way roundCount/mode/customText are, since the packs
+  // themselves (not the textarea's current contents) are the source of truth.
+  const [packs, setPacks] = useState(getPromptPacks);
+
+  function handleLoadPack(pack) {
+    onCustomTextChange(pack.prompts.join('\n'));
+  }
+
+  function handleSavePack() {
+    const name = window.prompt("Name this prompt pack (e.g. \"Friend group inside jokes\")");
+    if (!name) return;
+    const validPrompts = customPrompts.filter((p) => p.length <= MAX_CUSTOM_PROMPT_LENGTH);
+    setPacks(savePromptPack(name, validPrompts));
+  }
+
+  function handleDeletePack(e, name) {
+    e.stopPropagation();
+    setPacks(deletePromptPack(name));
+  }
 
   // Non-hosts don't get the config form — the round count/mode a non-host
   // sees locally isn't synced from the server (nothing broadcasts the
@@ -103,7 +127,37 @@ export function LobbyView({
 
       {isCustom && (
         <div className="custom-prompts-field">
-          <span className="field-label">Your prompts (one per line, at least {MIN_CUSTOM_PROMPTS})</span>
+          {packs.length > 0 && (
+            <div className="prompt-packs">
+              <span className="field-label">Saved packs</span>
+              <div className="prompt-packs-list">
+                {packs.map((pack) => (
+                  <button
+                    key={pack.name}
+                    type="button"
+                    className="recent-room-chip"
+                    onClick={() => handleLoadPack(pack)}
+                    title={`Load "${pack.name}" (${pack.prompts.length} prompts)`}
+                  >
+                    {pack.name}
+                    <span className="recent-room-remove" onClick={(e) => handleDeletePack(e, pack.name)}>×</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="custom-prompts-label-row">
+            <span className="field-label">Your prompts (one per line, at least {MIN_CUSTOM_PROMPTS})</span>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={handleSavePack}
+              disabled={!customReady}
+            >
+              Save as pack
+            </button>
+          </div>
           <textarea
             className="input custom-prompts-textarea"
             value={customText}

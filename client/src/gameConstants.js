@@ -15,6 +15,7 @@ export const VALID_ROUND_COUNTS = [1, 3, 5];
 
 export const MIN_CUSTOM_PROMPTS = 3;
 export const MAX_CUSTOM_PROMPTS = 50;
+export const MAX_CUSTOM_PROMPT_LENGTH = 60;
 
 // Mirrors server/src/game/prompts.js's GAME_MODES/PromptCategory, plus CUSTOM
 // and TELEPHONE (neither has a static server-side category — CUSTOM's prompt
