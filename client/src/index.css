@@ -672,6 +672,26 @@ h1, h2 {
   font-weight: 700;
 }
 
+.prompt-packs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+}
+.prompt-packs-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.custom-prompts-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+}
+
 .pill-picker {
   display: flex;
   flex-wrap: wrap;
@@ -878,6 +898,39 @@ h1, h2 {
   50% { transform: scale(1.6); opacity: 0.6; }
 }
 
+.chain-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.chain-strip-member {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: var(--bg-alt);
+  border: 2px solid var(--border);
+  color: var(--text-muted);
+}
+.chain-strip-current {
+  background: var(--accent);
+  border-color: var(--ink);
+  color: var(--ink);
+}
+.chain-strip-next {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+.chain-strip-callout {
+  width: 100%;
+  margin-top: 0.25rem;
+  font-weight: 700;
+}
+
 /* ---------- guessing ---------- */
 
 .guessing-header {
@@ -1081,6 +1134,65 @@ h1, h2 {
 .final-scoreboard-score {
   font-weight: 800;
   color: var(--accent);
+}
+
+.round-recap {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.round-recap-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  text-align: left;
+}
+
+.round-recap-row {
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-alt);
+  border: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.round-recap-row-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.round-recap-prompt {
+  font-weight: 800;
+}
+
+.round-recap-performers {
+  font-size: 0.8rem;
+}
+
+.round-recap-outcome {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.round-recap-star-icon {
+  color: var(--accent);
+  vertical-align: -0.1em;
+}
+
+.round-recap-audio {
+  width: 100%;
+  height: 32px;
 }
 
 /* ---------- how to play ---------- */
