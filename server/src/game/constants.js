@@ -52,6 +52,7 @@ export const VOICE_MODIFIERS = Object.freeze([
   'CHIPMUNK',
   'ECHO',
   'DISTORT',
+  'UNDERWATER',
 ]);
 
 // TELEPHONE mode forces this modifier on every hop of the relay chain —

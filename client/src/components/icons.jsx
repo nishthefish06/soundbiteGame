@@ -116,6 +116,16 @@ export function TelephoneIcon(props) {
   );
 }
 
+export function UnderwaterIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+      <path d="M2 8c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 4-2" {...stroke} />
+      <path d="M2 13c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 4-2" {...stroke} />
+      <path d="M2 18c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2 2-2 4-2" {...stroke} />
+    </svg>
+  );
+}
+
 export function DistortIcon(props) {
   return (
     <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
@@ -174,4 +184,5 @@ export const MODIFIER_ICONS = {
   CHIPMUNK: ChipmunkIcon,
   ECHO: EchoIcon,
   DISTORT: DistortIcon,
+  UNDERWATER: UnderwaterIcon,
 };

@@ -107,6 +107,32 @@ export const VOICE_MODIFIERS = {
     },
   },
 
+  // Slow LFO wobbling the lowpass cutoff underneath heavy muffling — the
+  // only modifier that varies over time rather than just recoloring the
+  // signal statically, which is what actually reads as "underwater" instead
+  // of just "muffled".
+  UNDERWATER: {
+    label: 'Underwater',
+    playbackRate: 0.92,
+    build(ctx, source) {
+      const lowpass = ctx.createBiquadFilter();
+      lowpass.type = 'lowpass';
+      lowpass.frequency.value = 500;
+      lowpass.Q.value = 3;
+
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 5;
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = 220; // wobble depth around the base cutoff
+      lfo.connect(lfoGain);
+      lfoGain.connect(lowpass.frequency);
+      lfo.start(0);
+
+      source.connect(lowpass);
+      return lowpass;
+    },
+  },
+
   // Genuinely mangles the signal rather than just recoloring it — narrow
   // telephone-bandwidth filtering plus heavy waveshaper grit. Used by
   // TELEPHONE mode, where degradation is meant to compound hop over hop.
