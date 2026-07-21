@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { rememberRoom } from '../recentRooms.js';
+import { playCorrectGuessChime, triggerHaptic } from '../sfx.js';
 
 // Keeps the address bar itself a valid invite link (?room=CODE) — so the
 // "Copy invite" button isn't the only way to get a shareable URL; the
@@ -16,6 +17,25 @@ function clearRoomCodeInUrl() {
   window.history.replaceState(null, '', url);
 }
 
+// Builds one game-over recap entry from a just-left ROUND_REVEAL snapshot.
+// Names are resolved now (rather than storing bare ids) so the recap still
+// reads correctly even if that player later leaves the room.
+function buildHistoryEntry(snapshot, audio) {
+  const performerIds = snapshot.chainOrder.length > 0 ? snapshot.chainOrder : [snapshot.actorId];
+  const nameFor = (id) => snapshot.players.find((p) => p.id === id)?.name ?? 'Someone';
+
+  return {
+    turnNumber: snapshot.turnNumber,
+    mode: snapshot.currentMode,
+    prompt: snapshot.currentPrompt,
+    modifier: snapshot.currentModifier,
+    performerNames: performerIds.map(nameFor),
+    correctGuesserNames: snapshot.correctGuesserIds.map(nameFor),
+    ratings: snapshot.ratings.map((r) => ({ name: nameFor(r.playerId), stars: r.stars })),
+    audio, // { modifier, url } | null
+  };
+}
+
 // Owns all room/game socket wiring so view components stay presentational:
 // snapshot (redacted per-viewer by the server already), chat log, the
 // incoming disguised-audio URL, and action creators for every client->server
@@ -27,6 +47,7 @@ export function useGameRoom(socket, playerId) {
   const [incomingAudio, setIncomingAudio] = useState(null); // { modifier, url }
   const [originalAudio, setOriginalAudio] = useState(null); // { modifier, url } — TELEPHONE mode's reveal-time replay of hop 1
   const [ratingProgress, setRatingProgress] = useState(null); // { count, total } — PERFORMANCE mode's live "N of M rated" headcount
+  const [roundHistory, setRoundHistory] = useState([]); // one entry per completed+revealed turn this game, for the game-over recap
   const [error, setError] = useState(null);
   const [phaseEnteredAt, setPhaseEnteredAt] = useState(null);
 
@@ -36,16 +57,47 @@ export function useGameRoom(socket, playerId) {
   // getting a turn, so roundNumber only changes once per full cycle. Each
   // individual actor's turn still needs its own fresh chat/audio state.
   const lastTurnRef = useRef(null);
+  // Mirrors the full snapshot from the previous game:stateChanged event —
+  // used to detect "we just left ROUND_REVEAL" for round-recap capture.
+  // Kept as a ref (not read from `snapshot` state) so onStateChanged always
+  // sees the truly-previous value instead of a stale closure.
+  const prevSnapshotRef = useRef(null);
+  // Mirrors incomingAudio, but updated synchronously inside onAudioBroadcast
+  // rather than derived from React state, for the same stale-closure reason.
+  // This is what a *guesser's* client has for "this round's audio".
+  const latestAudioRef = useRef(null);
+  // The actor's own submitted clip, captured client-side at submit time —
+  // the only client that never receives its own audio back over the socket
+  // (Socket.IO's socket.to() excludes the sender), so without this the
+  // recap would be missing audio for every single-actor-mode turn.
+  const ownAudioRef = useRef(null);
 
   useEffect(() => {
     function onStateChanged(newSnapshot) {
       setSnapshot(newSnapshot);
       setPhaseEnteredAt(Date.now());
+
+      const prevSnapshot = prevSnapshotRef.current;
+      // A round is "done" the moment we leave ROUND_REVEAL — whether that's
+      // into the next turn's PROMPT_SELECTION (turnNumber changes) or into
+      // GAME_OVER on the last round of the game (turnNumber does NOT change,
+      // since GAME_OVER carries the same turnNumber as the reveal it follows
+      // — see Room.js's _advanceTurnOrEndGame). Aborted rounds (actor
+      // disconnects mid-recording) never reach ROUND_REVEAL at all, so they
+      // never produce a recap entry, matching how they never got a reveal.
+      const leavingReveal = prevSnapshot?.state === 'ROUND_REVEAL' && newSnapshot.state !== 'ROUND_REVEAL';
+      let historyAudio = null;
+      if (leavingReveal) {
+        historyAudio = latestAudioRef.current ?? ownAudioRef.current;
+        setRoundHistory((prev) => [...prev, buildHistoryEntry(prevSnapshot, historyAudio)]);
+      }
+
       if (newSnapshot.turnNumber !== lastTurnRef.current) {
         lastTurnRef.current = newSnapshot.turnNumber;
         setChat([]);
         setIncomingAudio((prev) => {
-          if (prev) URL.revokeObjectURL(prev.url);
+          // Don't revoke a URL the recap just took ownership of.
+          if (prev && prev.url !== historyAudio?.url) URL.revokeObjectURL(prev.url);
           return null;
         });
         setOriginalAudio((prev) => {
@@ -54,6 +106,27 @@ export function useGameRoom(socket, playerId) {
         });
         setRatingProgress(null);
       }
+
+      if (leavingReveal) {
+        if (ownAudioRef.current && ownAudioRef.current.url !== historyAudio?.url) {
+          URL.revokeObjectURL(ownAudioRef.current.url);
+        }
+        latestAudioRef.current = null;
+        ownAudioRef.current = null;
+      }
+
+      // A fresh game (or "play again") starting: the previous game's recap
+      // no longer applies to what's about to be played.
+      if (newSnapshot.state === 'LOBBY') {
+        setRoundHistory((prev) => {
+          for (const entry of prev) {
+            if (entry.audio) URL.revokeObjectURL(entry.audio.url);
+          }
+          return [];
+        });
+      }
+
+      prevSnapshotRef.current = newSnapshot;
     }
 
     function onPlayersChanged(players) {
@@ -62,10 +135,18 @@ export function useGameRoom(socket, playerId) {
 
     function onGuess(entry) {
       setChat((prev) => [...prev, entry]);
+      // Feedback only for the guesser's own correct guess, not the whole
+      // room — the broadcast already reaches the guesser's own socket, so
+      // no new event is needed to detect "it was me".
+      if (entry.correct && entry.playerId === playerId) {
+        playCorrectGuessChime();
+        triggerHaptic();
+      }
     }
 
     function onAudioBroadcast({ modifier, audio }) {
       const url = URL.createObjectURL(new Blob([audio], { type: 'audio/wav' }));
+      latestAudioRef.current = { modifier, url };
       setIncomingAudio((prev) => {
         if (prev) URL.revokeObjectURL(prev.url);
         return { modifier, url };
@@ -103,8 +184,17 @@ export function useGameRoom(socket, playerId) {
         return null;
       });
       setRatingProgress(null);
+      setRoundHistory((prev) => {
+        for (const entry of prev) {
+          if (entry.audio) URL.revokeObjectURL(entry.audio.url);
+        }
+        return [];
+      });
       setPhaseEnteredAt(null);
       lastTurnRef.current = null;
+      prevSnapshotRef.current = null;
+      latestAudioRef.current = null;
+      ownAudioRef.current = null;
       clearRoomCodeInUrl();
       setError('KICKED');
     }
@@ -188,8 +278,17 @@ export function useGameRoom(socket, playerId) {
             return null;
           });
           setRatingProgress(null);
+          setRoundHistory((prev) => {
+            for (const entry of prev) {
+              if (entry.audio) URL.revokeObjectURL(entry.audio.url);
+            }
+            return [];
+          });
           setPhaseEnteredAt(null);
           lastTurnRef.current = null;
+          prevSnapshotRef.current = null;
+          latestAudioRef.current = null;
+          ownAudioRef.current = null;
           clearRoomCodeInUrl();
           resolve(res);
         });
@@ -237,6 +336,10 @@ export function useGameRoom(socket, playerId) {
     (modifier, blob) =>
       new Promise(async (resolve) => {
         setError(null);
+        // Stashed before sending — this client never gets its own audio
+        // broadcast back (see ownAudioRef's declaration above), so this is
+        // the only chance to capture it for the round recap.
+        ownAudioRef.current = { modifier, url: URL.createObjectURL(blob) };
         const audio = await blob.arrayBuffer();
         socket.emit('game:submitRecording', { modifier, audio }, (res) => {
           if (!res.ok) setError(res.error);
@@ -298,6 +401,7 @@ export function useGameRoom(socket, playerId) {
     incomingAudio,
     originalAudio,
     ratingProgress,
+    roundHistory,
     error,
     phaseEnteredAt,
     isActor: Boolean(snapshot && snapshot.actorId === playerId),
@@ -305,6 +409,9 @@ export function useGameRoom(socket, playerId) {
     // currently holds the mic — none of them can guess this round.
     isChainMember: Boolean(snapshot?.chainOrder?.includes(playerId)),
     isHost: Boolean(snapshot && snapshot.hostId === playerId),
+    // Joined mid-game — can watch but can't guess/rate until the round
+    // already in progress finishes (see Room.js's addPlayer/_promoteSpectators).
+    isSpectating: Boolean(snapshot?.players?.find((p) => p.id === playerId)?.spectating),
     createRoom,
     joinRoom,
     leaveRoom,
