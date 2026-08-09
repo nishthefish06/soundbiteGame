@@ -10,6 +10,9 @@ import {
   STREAK_BONUS_PER_LEVEL,
   MAX_STREAK_LEVEL,
   POINTS_PER_STAR,
+  POINTS_CORRECT_MATCH,
+  POINTS_PER_EVADED_GUESSER,
+  isValidModifierCombo,
 } from './constants.js';
 import { GAME_MODES } from './prompts.js';
 
@@ -986,4 +989,232 @@ test('a spectator who joins during the final round is promoted once the room ret
 
   assert.equal(room.players.get('latecomer').spectating, false, 'promoted once back in LOBBY');
   assert.ok(room.actorOrder.includes('latecomer'));
+});
+
+// -- modifier mixing --
+
+test('isValidModifierCombo accepts a single effect and a 2-effect combo, rejects the rest', () => {
+  assert.equal(isValidModifierCombo('ROBOT'), true);
+  assert.equal(isValidModifierCombo('ROBOT+ECHO'), true);
+  assert.equal(isValidModifierCombo('ROBOT+ROBOT'), false, 'no stacking an effect with itself');
+  assert.equal(isValidModifierCombo('ROBOT+ECHO+DEMON'), false, 'more than 2 effects');
+  assert.equal(isValidModifierCombo('BANANA'), false, 'unknown effect');
+  assert.equal(isValidModifierCombo('ROBOT+BANANA'), false, 'unknown second effect');
+  assert.equal(isValidModifierCombo(''), false);
+  assert.equal(isValidModifierCombo(null), false);
+});
+
+test('submitRecording accepts a valid modifier combo outside TELEPHONE mode', () => {
+  const room = makeRoom(3);
+  startGameAndPickPrompt(room, 3, GAME_MODES[0]);
+  room.submitRecording(room.actorId, 'ROBOT+ECHO');
+  assert.equal(room.currentModifier, 'ROBOT+ECHO');
+  assert.equal(room.state, GameState.GUESSING_ACTIVE);
+});
+
+test('TELEPHONE mode still rejects a modifier combo — only the forced single modifier is valid', () => {
+  const room = makeRoom(3);
+  startGameAndPickPrompt(room, 3, 'TELEPHONE');
+  assert.throws(() => room.submitRecording(room.actorId, 'DISTORT+ECHO'), /INVALID_MODIFIER/);
+});
+
+// -- WHO_SAID_IT mode --
+
+function startWhoSaidItGame(room, rounds = 1) {
+  room.startGame(room.hostId, rounds, 'WHO_SAID_IT');
+}
+
+// Submits a dummy recording for every non-spectating player, in order.
+function submitAllGroupRecordings(room, modifier = 'ROBOT') {
+  for (const player of room.playerList) {
+    if (player.spectating) continue;
+    room.submitGroupRecording(player.id, modifier);
+  }
+}
+
+// Resolves every clip in the current MATCHING_ACTIVE round with a supplied
+// per-clip guesser function `guess(ownerId, eligibleGuesserIds) -> guesserId -> guessedPlayerId map`,
+// or defaults to everyone guessing correctly.
+function resolveAllClips(room, pickGuess = (ownerId) => ownerId) {
+  while (room.state === GameState.MATCHING_ACTIVE) {
+    const ownerId = room.clipOrder[room.clipIndex];
+    const guessers = room.playerList.filter((p) => !p.spectating && p.id !== ownerId).map((p) => p.id);
+    for (const guesserId of guessers) {
+      room.submitMatchGuess(guesserId, pickGuess(ownerId, guesserId));
+    }
+  }
+}
+
+test('startGame in WHO_SAID_IT mode goes straight to GROUP_RECORDING with one shared prompt, no actor', () => {
+  const room = makeRoom(3);
+  startWhoSaidItGame(room);
+
+  assert.equal(room.state, GameState.GROUP_RECORDING);
+  assert.equal(room.actorId, null);
+  assert.equal(room.chainOrder.length, 0);
+  assert.ok(room.currentPrompt, 'a prompt was drawn');
+  assert.equal(room.promptOptions.length, 0, 'nobody picks among options in this mode');
+});
+
+test('WHO_SAID_IT mode: submitGroupRecording rejects spectators, double-submits, and bad modifiers', () => {
+  const room = makeRoom(3);
+  startWhoSaidItGame(room);
+  const [a, b] = room.playerList.map((p) => p.id);
+
+  assert.throws(() => room.submitGroupRecording('nope', 'ROBOT'), /UNKNOWN_PLAYER/);
+  assert.throws(() => room.submitGroupRecording(a, 'BANANA'), /INVALID_MODIFIER/);
+
+  room.submitGroupRecording(a, 'ROBOT');
+  assert.throws(() => room.submitGroupRecording(a, 'ECHO'), /ALREADY_SUBMITTED/);
+  assert.equal(room.state, GameState.GROUP_RECORDING, 'still waiting on the third player');
+
+  room.submitGroupRecording(b, 'ROBOT+ECHO'); // mixing works here too
+});
+
+test('WHO_SAID_IT mode: moves to MATCHING_ACTIVE once every non-spectating player has recorded', () => {
+  const room = makeRoom(4);
+  startWhoSaidItGame(room);
+  submitAllGroupRecordings(room);
+
+  assert.equal(room.state, GameState.MATCHING_ACTIVE);
+  assert.equal(room.clipOrder.length, 4);
+  assert.deepEqual([...room.clipOrder].sort(), room.playerList.map((p) => p.id).sort());
+  assert.equal(room.clipIndex, 0);
+});
+
+test('WHO_SAID_IT mode: a mid-game spectator does not count toward the recording total and cannot record', () => {
+  const room = makeRoom(3);
+  startWhoSaidItGame(room);
+  room.addPlayer('latecomer', 'Latecomer'); // joins mid-round -> spectating
+
+  assert.throws(() => room.submitGroupRecording('latecomer', 'ROBOT'), /SPECTATING/);
+
+  submitAllGroupRecordings(room); // the original 3 only
+  assert.equal(room.state, GameState.MATCHING_ACTIVE, "latecomer isn't part of the denominator");
+});
+
+test('WHO_SAID_IT mode: the clip owner cannot guess their own clip, and cannot guess twice', () => {
+  const room = makeRoom(3);
+  startWhoSaidItGame(room);
+  submitAllGroupRecordings(room);
+
+  const ownerId = room.clipOrder[room.clipIndex];
+  const [guesser] = room.playerList.map((p) => p.id).filter((id) => id !== ownerId);
+
+  assert.throws(() => room.submitMatchGuess(ownerId, ownerId), /OWNER_CANNOT_GUESS_OWN_CLIP/);
+  assert.throws(() => room.submitMatchGuess(guesser, 'not-a-real-player'), /INVALID_GUESS_TARGET/);
+
+  room.submitMatchGuess(guesser, ownerId);
+  assert.throws(() => room.submitMatchGuess(guesser, ownerId), /ALREADY_GUESSED/);
+});
+
+test('WHO_SAID_IT mode: correct guesses score the guesser, wrong guesses score the evaded owner', () => {
+  const room = makeRoom(3); // 1 owner, 2 guessers per clip
+  startWhoSaidItGame(room);
+  submitAllGroupRecordings(room);
+
+  const ownerId = room.clipOrder[room.clipIndex];
+  const [g1, g2] = room.playerList.map((p) => p.id).filter((id) => id !== ownerId);
+
+  room.submitMatchGuess(g1, ownerId); // correct
+  assert.equal(room.players.get(g1).score, POINTS_CORRECT_MATCH);
+
+  room.submitMatchGuess(g2, g1); // g2 guesses g1 instead of the real owner — wrong
+  assert.equal(room.players.get(ownerId).score, POINTS_PER_EVADED_GUESSER);
+  assert.equal(room.players.get(g2).score, 0, 'a wrong guess earns the guesser nothing');
+});
+
+test('WHO_SAID_IT mode: cycles through every clip, then reveals with a full clipResults recap', () => {
+  const room = makeRoom(4);
+  startWhoSaidItGame(room);
+  submitAllGroupRecordings(room);
+
+  resolveAllClips(room); // everyone guesses correctly by default
+
+  assert.equal(room.state, GameState.ROUND_REVEAL);
+  assert.equal(room.clipResults.length, 4);
+  for (const result of room.clipResults) {
+    assert.equal(result.correctGuesserIds.length, 3, 'every non-owner guessed correctly');
+  }
+});
+
+test('WHO_SAID_IT mode: finishReveal ends the game after the configured round count (round == turn here)', () => {
+  const room = makeRoom(3);
+  startWhoSaidItGame(room, 1);
+  submitAllGroupRecordings(room);
+  resolveAllClips(room);
+
+  room.finishReveal();
+  assert.equal(room.state, GameState.GAME_OVER);
+});
+
+test('WHO_SAID_IT mode: plays multiple rounds, reshuffling who records each time', () => {
+  const room = makeRoom(3);
+  startWhoSaidItGame(room, 3);
+
+  for (let i = 0; i < 3; i += 1) {
+    assert.equal(room.state, GameState.GROUP_RECORDING);
+    submitAllGroupRecordings(room);
+    resolveAllClips(room);
+    assert.equal(room.state, GameState.ROUND_REVEAL);
+    room.finishReveal();
+  }
+
+  assert.equal(room.state, GameState.GAME_OVER);
+  assert.equal(room.roundNumber, 3);
+});
+
+test('WHO_SAID_IT mode: endMatching() force-resolves the current clip on a timeout (backstop)', () => {
+  const room = makeRoom(3);
+  startWhoSaidItGame(room);
+  submitAllGroupRecordings(room);
+
+  const ownerId = room.clipOrder[room.clipIndex];
+  const [guesser] = room.playerList.map((p) => p.id).filter((id) => id !== ownerId);
+  room.submitMatchGuess(guesser, ownerId); // only one of two eligible guessers answers in time
+
+  room.endMatching();
+  assert.equal(room.clipResults.length, 1);
+  assert.deepEqual(room.clipResults[0].correctGuesserIds, [guesser]);
+});
+
+test('WHO_SAID_IT mode: finishGroupRecording proceeds with whoever submitted once enough have (backstop)', () => {
+  const room = makeRoom(4);
+  startWhoSaidItGame(room);
+  const [a, b] = room.playerList.map((p) => p.id);
+  room.submitGroupRecording(a, 'ROBOT');
+  room.submitGroupRecording(b, 'ROBOT'); // only 2 of 4 submitted before the timer fired
+
+  room.finishGroupRecording();
+
+  assert.equal(room.state, GameState.MATCHING_ACTIVE);
+  assert.deepEqual([...room.clipOrder].sort(), [a, b].sort());
+});
+
+test('WHO_SAID_IT mode: finishGroupRecording skips the round entirely if fewer than 2 submitted', () => {
+  const room = makeRoom(3);
+  startWhoSaidItGame(room, 3);
+  const [a] = room.playerList.map((p) => p.id);
+  room.submitGroupRecording(a, 'ROBOT'); // only 1 submitted
+
+  room.finishGroupRecording();
+
+  assert.equal(room.state, GameState.GROUP_RECORDING, 'moved straight on to the next round');
+  assert.equal(room.roundNumber, 2);
+});
+
+test('WHO_SAID_IT mode: a spectator who joins mid-round is promoted into recording eligibility next round', () => {
+  const room = makeRoom(3);
+  startWhoSaidItGame(room, 3);
+  room.addPlayer('latecomer', 'Latecomer');
+  assert.equal(room.players.get('latecomer').spectating, true);
+
+  submitAllGroupRecordings(room); // original 3 only
+  resolveAllClips(room);
+  room.finishReveal();
+
+  assert.equal(room.players.get('latecomer').spectating, false, 'promoted at the round boundary');
+  assert.equal(room.state, GameState.GROUP_RECORDING, 'next round started');
+  room.submitGroupRecording('latecomer', 'ROBOT'); // no longer spectating — should succeed, not throw
+  assert.ok(room.groupRecordings.has('latecomer'));
 });

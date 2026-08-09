@@ -52,6 +52,18 @@ function waitFor(socket, event) {
   return new Promise((resolve) => socket.once(event, resolve));
 }
 
+// Polls a condition instead of a fixed sleep — more robust than
+// `setTimeout` guesswork for assertions that depend on real network
+// round-trips (e.g. a broadcast reaching several sockets), which can take
+// longer than a short fixed delay under system load.
+async function waitUntil(condition, timeoutMs = 2000) {
+  const start = Date.now();
+  while (!condition()) {
+    if (Date.now() - start > timeoutMs) throw new Error('waitUntil: condition never became true');
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 async function makePlayer(url, name, roomCode) {
   const socket = connect(url);
   await waitFor(socket, 'connect');
@@ -541,6 +553,114 @@ test('TELEPHONE mode relays through the chain and replays the original recording
     const revealPayload = await revealPromise;
     assert.equal(revealPayload.modifier, 'DISTORT');
     assert.ok(revealPayload.audio, 'the original hop-1 audio should be replayed at reveal');
+
+    for (const p of all) p.socket.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('WHO_SAID_IT mode: clip audio releases one at a time, and currentClipOwnerId is hidden until reveal', async () => {
+  const server = await startTestServer();
+  try {
+    const host = await makePlayer(server.url, 'Alice');
+    const p2 = await makePlayer(server.url, 'Bob', host.roomCode);
+    const p3 = await makePlayer(server.url, 'Cara', host.roomCode);
+    const all = [host, p2, p3];
+    const byId = Object.fromEntries(all.map((p) => [p.playerId, p]));
+
+    const stateChanges = {};
+    for (const p of all) {
+      p.socket.on('game:stateChanged', (s) => { stateChanges[p.playerId] = s; });
+    }
+    const audioReceived = { [host.playerId]: [], [p2.playerId]: [], [p3.playerId]: [] };
+    for (const p of all) {
+      p.socket.on('game:audioBroadcast', (payload) => audioReceived[p.playerId].push(payload));
+    }
+
+    const startRes = await ack(host.socket, 'game:startGame', { roundCount: 1, mode: 'WHO_SAID_IT' });
+    assert.equal(startRes.ok, true);
+
+    const room = server.manager.getRoom(host.roomCode);
+    assert.equal(room.state, 'GROUP_RECORDING');
+
+    await new Promise((r) => setTimeout(r, 50));
+    for (const p of all) {
+      assert.equal(
+        stateChanges[p.playerId].currentPrompt,
+        room.currentPrompt,
+        'the shared prompt is visible to everyone up front, unlike every other mode',
+      );
+    }
+
+    // Each player's clip is a distinguishable buffer so it can be traced
+    // back to its owner once broadcast.
+    const clipFor = {
+      [host.playerId]: new Uint8Array([1, 1, 1]).buffer,
+      [p2.playerId]: new Uint8Array([2, 2, 2]).buffer,
+      [p3.playerId]: new Uint8Array([3, 3, 3]).buffer,
+    };
+
+    await ack(host.socket, 'game:submitRecording', { modifier: 'ROBOT', audio: clipFor[host.playerId] });
+    await ack(p2.socket, 'game:submitRecording', { modifier: 'ECHO', audio: clipFor[p2.playerId] });
+    await new Promise((r) => setTimeout(r, 50));
+    for (const p of all) {
+      assert.equal(audioReceived[p.playerId].length, 0, 'no clip should release before everyone has recorded');
+    }
+
+    await ack(p3.socket, 'game:submitRecording', { modifier: 'DISTORT', audio: clipFor[p3.playerId] });
+    assert.equal(room.state, 'MATCHING_ACTIVE', 'the state transition itself is synchronous with the last submission');
+
+    await waitUntil(() => all.every((p) => audioReceived[p.playerId].length === 1));
+    for (const p of all) {
+      assert.equal(audioReceived[p.playerId].length, 1, 'exactly one clip released so far, to everyone including its owner');
+    }
+    const firstOwnerId = room.clipOrder[0];
+    const releasedBytes = new Uint8Array(audioReceived[firstOwnerId][0].audio);
+    assert.deepEqual([...releasedBytes], [...new Uint8Array(clipFor[firstOwnerId])], 'the released clip matches its true owner, not some other player');
+
+    // Redaction: only the real owner sees currentClipOwnerId as themself; everyone else sees null.
+    for (const p of all) {
+      const expected = p.playerId === firstOwnerId ? firstOwnerId : null;
+      assert.equal(stateChanges[p.playerId].currentClipOwnerId, expected);
+    }
+
+    // The two non-owners guess correctly; the round has 3 clips so this only resolves clip 1.
+    const guessers = all.filter((p) => p.playerId !== firstOwnerId);
+    for (const g of guessers) {
+      const res = await ack(g.socket, 'game:submitMatchGuess', { guessedPlayerId: firstOwnerId });
+      assert.equal(res.ok, true);
+    }
+    assert.equal(room.state, 'MATCHING_ACTIVE', 'two more clips still to go');
+    assert.equal(room.clipIndex, 1);
+
+    const secondOwnerId = room.clipOrder[1];
+    assert.notEqual(secondOwnerId, firstOwnerId);
+    await waitUntil(() => all.every((p) => stateChanges[p.playerId].clipIndex === 1));
+    for (const p of all) {
+      const expected = p.playerId === secondOwnerId ? secondOwnerId : null;
+      assert.equal(stateChanges[p.playerId].currentClipOwnerId, expected, 'redaction updates for the new clip');
+    }
+
+    // Resolve the remaining two clips so the round reveals.
+    while (room.state === 'MATCHING_ACTIVE') {
+      const ownerId = room.clipOrder[room.clipIndex];
+      const eligible = all.filter((p) => p.playerId !== ownerId);
+      for (const g of eligible) {
+        await ack(byId[g.playerId].socket, 'game:submitMatchGuess', { guessedPlayerId: ownerId });
+      }
+    }
+    assert.equal(room.state, 'ROUND_REVEAL');
+    await waitUntil(() => all.every((p) => stateChanges[p.playerId]?.state === 'ROUND_REVEAL'));
+
+    for (const p of all) {
+      assert.equal(
+        stateChanges[p.playerId].currentClipOwnerId,
+        room.clipOrder[room.clipOrder.length - 1],
+        'once revealed, everyone sees the (last) clip owner',
+      );
+      assert.equal(stateChanges[p.playerId].clipResults.length, 3, 'clipResults are visible to everyone at reveal');
+    }
 
     for (const p of all) p.socket.close();
   } finally {

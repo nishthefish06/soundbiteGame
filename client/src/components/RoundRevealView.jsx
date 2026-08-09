@@ -8,6 +8,35 @@ export function RoundRevealView({ snapshot, phaseEnteredAt, originalAudio }) {
   const remainingMs = useCountdown(phaseEnteredAt, REVEAL_DURATION_MS);
   const isChainMode = snapshot.chainOrder.length > 0;
   const isPerformanceMode = snapshot.currentMode === 'PERFORMANCE';
+  const isWhoSaidIt = snapshot.currentMode === 'WHO_SAID_IT';
+  const nameFor = (id) => snapshot.players.find((p) => p.id === id)?.name ?? 'Someone';
+
+  if (isWhoSaidIt) {
+    return (
+      <div className="phase-view reveal-view">
+        <p className="eyebrow">Everyone was disguising</p>
+        <h2 className="prompt-reveal">{snapshot.currentPrompt}</h2>
+
+        <ul className="clip-results-list">
+          {snapshot.clipResults.map((result, i) => (
+            <li key={result.clipOwnerId} className="clip-results-row">
+              <span className="clip-results-owner">Clip {i + 1}: {nameFor(result.clipOwnerId)}</span>
+              {result.correctGuesserIds.length > 0 ? (
+                <span className="muted">
+                  Caught by {result.correctGuesserIds.map(nameFor).join(', ')}
+                </span>
+              ) : (
+                <span className="muted">Nobody guessed it — great disguise!</span>
+              )}
+            </li>
+          ))}
+        </ul>
+
+        <p className="muted">Next round in {Math.ceil(remainingMs / 1000)}s…</p>
+      </div>
+    );
+  }
+
   const performers = isChainMode
     ? snapshot.players.filter((p) => snapshot.chainOrder.includes(p.id))
     : snapshot.players.filter((p) => p.id === snapshot.actorId);

@@ -21,9 +21,32 @@ function clearRoomCodeInUrl() {
 // Names are resolved now (rather than storing bare ids) so the recap still
 // reads correctly even if that player later leaves the room.
 function buildHistoryEntry(snapshot, audio) {
-  const performerIds = snapshot.chainOrder.length > 0 ? snapshot.chainOrder : [snapshot.actorId];
   const nameFor = (id) => snapshot.players.find((p) => p.id === id)?.name ?? 'Someone';
 
+  if (snapshot.currentMode === 'WHO_SAID_IT') {
+    // Several clips per round, not one — there's no single slot for
+    // round-recap audio the way every other mode has, so this omits it
+    // (GameOverView already treats `audio: null` as "nothing to play back").
+    // correctGuesserNames stays empty on purpose: gameSuperlatives.js's
+    // guess-based stats don't extend to per-clip matching in v1, so a
+    // WHO_SAID_IT entry simply doesn't contribute to them.
+    return {
+      turnNumber: snapshot.turnNumber,
+      mode: snapshot.currentMode,
+      prompt: snapshot.currentPrompt,
+      modifier: null,
+      performerNames: snapshot.clipResults.map((r) => nameFor(r.clipOwnerId)),
+      correctGuesserNames: [],
+      ratings: [],
+      clipResults: snapshot.clipResults.map((r) => ({
+        ownerName: nameFor(r.clipOwnerId),
+        correctGuesserNames: r.correctGuesserIds.map(nameFor),
+      })),
+      audio: null,
+    };
+  }
+
+  const performerIds = snapshot.chainOrder.length > 0 ? snapshot.chainOrder : [snapshot.actorId];
   return {
     turnNumber: snapshot.turnNumber,
     mode: snapshot.currentMode,
@@ -47,6 +70,7 @@ export function useGameRoom(socket, playerId) {
   const [incomingAudio, setIncomingAudio] = useState(null); // { modifier, url }
   const [originalAudio, setOriginalAudio] = useState(null); // { modifier, url } — TELEPHONE mode's reveal-time replay of hop 1
   const [ratingProgress, setRatingProgress] = useState(null); // { count, total } — PERFORMANCE mode's live "N of M rated" headcount
+  const [recordingProgress, setRecordingProgress] = useState(null); // { count, total } — WHO_SAID_IT's live "N of M recorded" headcount
   const [roundHistory, setRoundHistory] = useState([]); // one entry per completed+revealed turn this game, for the game-over recap
   const [error, setError] = useState(null);
   const [phaseEnteredAt, setPhaseEnteredAt] = useState(null);
@@ -105,6 +129,7 @@ export function useGameRoom(socket, playerId) {
           return null;
         });
         setRatingProgress(null);
+        setRecordingProgress(null);
       }
 
       if (leavingReveal) {
@@ -165,6 +190,10 @@ export function useGameRoom(socket, playerId) {
       setRatingProgress({ count, total });
     }
 
+    function onGroupRecordingProgress({ count, total }) {
+      setRecordingProgress({ count, total });
+    }
+
     function onHostChanged(hostId) {
       setSnapshot((prev) => (prev ? { ...prev, hostId } : prev));
     }
@@ -184,6 +213,7 @@ export function useGameRoom(socket, playerId) {
         return null;
       });
       setRatingProgress(null);
+      setRecordingProgress(null);
       setRoundHistory((prev) => {
         for (const entry of prev) {
           if (entry.audio) URL.revokeObjectURL(entry.audio.url);
@@ -205,6 +235,7 @@ export function useGameRoom(socket, playerId) {
     socket.on('game:audioBroadcast', onAudioBroadcast);
     socket.on('game:originalAudioReveal', onOriginalAudioReveal);
     socket.on('game:ratingProgress', onRatingProgress);
+    socket.on('game:groupRecordingProgress', onGroupRecordingProgress);
     socket.on('room:hostChanged', onHostChanged);
     socket.on('room:kicked', onKicked);
     return () => {
@@ -214,6 +245,7 @@ export function useGameRoom(socket, playerId) {
       socket.off('game:audioBroadcast', onAudioBroadcast);
       socket.off('game:originalAudioReveal', onOriginalAudioReveal);
       socket.off('game:ratingProgress', onRatingProgress);
+      socket.off('game:groupRecordingProgress', onGroupRecordingProgress);
       socket.off('room:hostChanged', onHostChanged);
       socket.off('room:kicked', onKicked);
     };
@@ -278,6 +310,7 @@ export function useGameRoom(socket, playerId) {
             return null;
           });
           setRatingProgress(null);
+          setRecordingProgress(null);
           setRoundHistory((prev) => {
             for (const entry of prev) {
               if (entry.audio) URL.revokeObjectURL(entry.audio.url);
@@ -371,6 +404,23 @@ export function useGameRoom(socket, playerId) {
     [socket],
   );
 
+  // WHO_SAID_IT mode only: guess at who recorded the clip currently playing.
+  // GroupRecordingView reuses submitRecording as-is for the simultaneous
+  // recording phase (same `{modifier, audio}` wire shape — the server tells
+  // room.currentMode apart internally), so this is the only new action
+  // creator this mode needs.
+  const submitMatchGuess = useCallback(
+    (guessedPlayerId) =>
+      new Promise((resolve) => {
+        setError(null);
+        socket.emit('game:submitMatchGuess', { guessedPlayerId }, (res) => {
+          if (!res.ok) setError(res.error);
+          resolve(res);
+        });
+      }),
+    [socket],
+  );
+
   const kickPlayer = useCallback(
     (targetId) =>
       new Promise((resolve) => {
@@ -401,6 +451,7 @@ export function useGameRoom(socket, playerId) {
     incomingAudio,
     originalAudio,
     ratingProgress,
+    recordingProgress,
     roundHistory,
     error,
     phaseEnteredAt,
@@ -408,6 +459,10 @@ export function useGameRoom(socket, playerId) {
     // TELEPHONE mode: true for every relay-chain member, not just whoever
     // currently holds the mic — none of them can guess this round.
     isChainMember: Boolean(snapshot?.chainOrder?.includes(playerId)),
+    // WHO_SAID_IT mode: true only while *this player's own* clip is the one
+    // currently playing — everyone else who recorded is still eligible to
+    // guess other players' clips, they just can't guess this one.
+    isClipOwner: Boolean(snapshot && snapshot.currentClipOwnerId === playerId),
     isHost: Boolean(snapshot && snapshot.hostId === playerId),
     // Joined mid-game — can watch but can't guess/rate until the round
     // already in progress finishes (see Room.js's addPlayer/_promoteSpectators).
@@ -421,6 +476,7 @@ export function useGameRoom(socket, playerId) {
     submitRecording,
     submitGuess,
     submitRating,
+    submitMatchGuess,
     kickPlayer,
     transferHost,
   };

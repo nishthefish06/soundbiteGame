@@ -8,6 +8,8 @@ import { LobbyView } from './components/LobbyView.jsx';
 import { PromptSelectionView } from './components/PromptSelectionView.jsx';
 import { ActorRecordingView } from './components/ActorRecordingView.jsx';
 import { RelayRecordingView } from './components/RelayRecordingView.jsx';
+import { GroupRecordingView } from './components/GroupRecordingView.jsx';
+import { MatchingView } from './components/MatchingView.jsx';
 import { GuesserWaitingView } from './components/GuesserWaitingView.jsx';
 import { GuessingView } from './components/GuessingView.jsx';
 import { ActorListeningView } from './components/ActorListeningView.jsx';
@@ -17,7 +19,13 @@ import { RoundRevealView } from './components/RoundRevealView.jsx';
 import { GameOverView } from './components/GameOverView.jsx';
 import { HowToPlayModal } from './components/HowToPlayModal.jsx';
 import { CopyIcon, CheckIcon } from './components/icons.jsx';
-import { GUESSING_DURATION_MS, RATING_DURATION_MS, VALID_ROUND_COUNTS, GAME_MODES } from './gameConstants.js';
+import {
+  GUESSING_DURATION_MS,
+  RATING_DURATION_MS,
+  MATCHING_DURATION_MS,
+  VALID_ROUND_COUNTS,
+  GAME_MODES,
+} from './gameConstants.js';
 import { friendlyError } from './errorMessages.js';
 
 export default function App() {
@@ -27,6 +35,7 @@ export default function App() {
 
   const guessingRemainingMs = useCountdown(game.phaseEnteredAt, GUESSING_DURATION_MS);
   const ratingRemainingMs = useCountdown(game.phaseEnteredAt, RATING_DURATION_MS);
+  const matchingRemainingMs = useCountdown(game.phaseEnteredAt, MATCHING_DURATION_MS);
 
   // Lifted out of LobbyView so a "Play again" (which unmounts/remounts it)
   // doesn't reset the host back to the defaults every time.
@@ -48,6 +57,7 @@ export default function App() {
   const actor = snapshot.players.find((p) => p.id === snapshot.actorId);
   const guessingSecondsLeft = snapshot.state === 'GUESSING_ACTIVE' ? Math.ceil(guessingRemainingMs / 1000) : null;
   const ratingSecondsLeft = snapshot.state === 'RATING_ACTIVE' ? Math.ceil(ratingRemainingMs / 1000) : null;
+  const matchingSecondsLeft = snapshot.state === 'MATCHING_ACTIVE' ? Math.ceil(matchingRemainingMs / 1000) : null;
 
   function renderPhase() {
     switch (snapshot.state) {
@@ -119,6 +129,39 @@ export default function App() {
             players={snapshot.players}
             actorId={snapshot.actorId}
             selfId={playerId}
+          />
+        );
+
+      case 'GROUP_RECORDING':
+        return game.isSpectating ? (
+          <GuesserWaitingView
+            actorName="Everyone"
+            action="is recording a disguised clip"
+            subtext="You'll join the rotation next round."
+          />
+        ) : (
+          <GroupRecordingView
+            prompt={snapshot.currentPrompt}
+            onSubmitRecording={game.submitRecording}
+            phaseEnteredAt={game.phaseEnteredAt}
+            recordingProgress={game.recordingProgress}
+          />
+        );
+
+      case 'MATCHING_ACTIVE':
+        return (
+          <MatchingView
+            incomingAudio={game.incomingAudio}
+            secondsLeft={matchingSecondsLeft}
+            isClipOwner={game.isClipOwner}
+            isSpectating={game.isSpectating}
+            alreadyGuessed={snapshot.clipGuesserIds.includes(playerId)}
+            players={snapshot.players}
+            selfId={playerId}
+            recordedPlayerIds={snapshot.recordedPlayerIds}
+            clipNumber={snapshot.clipIndex + 1}
+            totalClips={snapshot.totalClips}
+            onSubmitMatchGuess={game.submitMatchGuess}
           />
         );
 

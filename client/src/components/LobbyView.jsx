@@ -99,8 +99,11 @@ export function LobbyView({
             ))}
           </div>
           <span className="muted rounds-hint">
-            Every player gets a turn as the Actor each round — that's {roundCount * playerCount} turn
-            {roundCount * playerCount === 1 ? '' : 's'} total.
+            {mode === 'WHO_SAID_IT'
+              ? `Everyone records at once each round — that's ${roundCount} round${roundCount === 1 ? '' : 's'} total.`
+              : `Every player gets a turn as the Actor each round — that's ${roundCount * playerCount} turn${
+                  roundCount * playerCount === 1 ? '' : 's'
+                } total.`}
           </span>
         </div>
 

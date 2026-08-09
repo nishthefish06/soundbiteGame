@@ -37,6 +37,12 @@ const ERROR_MESSAGES = {
   INVALID_RATING: 'Pick a star rating from 1 to 5.',
   ALREADY_RATED: 'You already rated this one!',
 
+  // Who Said It? mode
+  ALREADY_SUBMITTED: 'You already sent your clip for this round.',
+  OWNER_CANNOT_GUESS_OWN_CLIP: "That one's yours — you can't guess it.",
+  INVALID_GUESS_TARGET: 'Pick one of the players shown.',
+  ALREADY_GUESSED: 'You already guessed this clip!',
+
   // Host controls
   NOT_HOST: 'Only the host can do that.',
   KICKED: 'You were removed from this room by the host.',

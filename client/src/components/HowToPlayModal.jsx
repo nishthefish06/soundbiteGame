@@ -6,6 +6,7 @@ const MODE_BLURBS = [
   ['CUSTOM', 'Custom', "Guess the host's own prompts — inside jokes, anything goes."],
   ['TELEPHONE', 'Telephone', 'The prompt gets relayed (and distorted) person to person before everyone guesses the original.'],
   ['PERFORMANCE', 'Act It Out', "Act out a wacky prompt with your voice — everyone else rates the performance 1-5 stars."],
+  ['WHO_SAID_IT', 'Who Said It?', 'Everyone records the same prompt at once, disguised — then guess who recorded which clip.'],
 ];
 
 export function HowToPlayModal({ onClose }) {

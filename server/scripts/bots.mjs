@@ -15,6 +15,11 @@
 // (it's a rating, not a guess), so bots auto-submit a random 1-5 star
 // rating instead of staying silent — otherwise a solo session could never
 // reach ROUND_REVEAL without waiting out the full rating timer.
+// WHO_SAID_IT mode similarly has no single Actor for bots to wait their turn
+// as — every bot auto-submits its own dummy clip during GROUP_RECORDING, and
+// during MATCHING_ACTIVE (re-entered once per clip) each bot that isn't that
+// clip's owner submits a random guess, so a solo session can play through
+// every clip in the round.
 import { io } from 'socket.io-client';
 
 const [roomCode, countArg] = process.argv.slice(2);
@@ -83,6 +88,32 @@ function makeBot(name) {
           if (!res.ok) console.log(`[${name}] submitRating failed: ${res.error}`);
         });
       }, 500);
+    }
+
+    if (snapshot.state === 'GROUP_RECORDING') {
+      setTimeout(() => {
+        const audio = makeDummyWavBuffer();
+        socket.emit('game:submitRecording', { modifier: 'ROBOT', audio }, (res) => {
+          if (!res.ok) console.log(`[${name}] submitRecording failed: ${res.error}`);
+        });
+      }, 500);
+    }
+
+    if (snapshot.state === 'MATCHING_ACTIVE' && snapshot.currentClipOwnerId !== playerId) {
+      // Only players who actually recorded a clip this round are valid
+      // targets — a straggler who never submitted isn't, and guessing them
+      // gets INVALID_GUESS_TARGET back.
+      const others = snapshot.players.filter(
+        (p) => p.id !== playerId && !p.spectating && snapshot.recordedPlayerIds.includes(p.id),
+      );
+      const guess = others[Math.floor(Math.random() * others.length)];
+      if (guess) {
+        setTimeout(() => {
+          socket.emit('game:submitMatchGuess', { guessedPlayerId: guess.id }, (res) => {
+            if (!res.ok) console.log(`[${name}] submitMatchGuess failed: ${res.error}`);
+          });
+        }, 500);
+      }
     }
   });
 
