@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { StarIcon } from './icons.jsx';
+import { computeSuperlatives } from '../gameSuperlatives.js';
 
 export function GameOverView({ players, roundHistory, onPlayAgain }) {
   const ranked = [...players].sort((a, b) => b.score - a.score);
   const topScore = ranked[0]?.score ?? 0;
   const winners = ranked.filter((p) => p.score === topScore && topScore > 0);
   const [showRecap, setShowRecap] = useState(false);
+  const superlatives = computeSuperlatives(roundHistory, players);
 
   return (
     <div className="phase-view game-over-view">
@@ -27,6 +29,19 @@ export function GameOverView({ players, roundHistory, onPlayAgain }) {
           </li>
         ))}
       </ol>
+
+      {superlatives.length > 0 && (
+        <ul className="superlatives-row">
+          {superlatives.map((s) => (
+            <li key={s.key} className="superlative-card">
+              <span className="superlative-emoji">{s.emoji}</span>
+              <span className="superlative-title">{s.title}</span>
+              <span className="superlative-name">{s.name}</span>
+              <span className="muted superlative-detail">{s.detail}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {roundHistory.length > 0 && (
         <div className="round-recap">
@@ -57,6 +72,17 @@ export function GameOverView({ players, roundHistory, onPlayAgain }) {
                     ) : (
                       <p className="muted round-recap-outcome">Nobody rated this performance.</p>
                     )
+                  ) : entry.mode === 'WHO_SAID_IT' ? (
+                    <ul className="round-recap-clip-list">
+                      {entry.clipResults.map((result, i) => (
+                        <li key={i} className="muted round-recap-outcome">
+                          Clip {i + 1}: {result.ownerName} —{' '}
+                          {result.correctGuesserNames.length > 0
+                            ? `caught by ${result.correctGuesserNames.join(', ')}`
+                            : 'nobody guessed it'}
+                        </li>
+                      ))}
+                    </ul>
                   ) : entry.correctGuesserNames.length > 0 ? (
                     <p className="muted round-recap-outcome">{entry.correctGuesserNames.join(', ')} guessed it!</p>
                   ) : (
