@@ -10,6 +10,12 @@ export const GameState = Object.freeze({
   // PERFORMANCE mode only: other players rate the actor's performance 1-5
   // stars instead of guessing a prompt — no correct answer, so no guess chat.
   RATING_ACTIVE: 'RATING_ACTIVE',
+  // WHO_SAID_IT mode only: every non-spectating player records the same
+  // prompt at once, instead of a single actor taking a turn.
+  GROUP_RECORDING: 'GROUP_RECORDING',
+  // WHO_SAID_IT mode only: one recorded clip plays and everyone but its
+  // owner guesses who recorded it. Re-entered once per clip within a round.
+  MATCHING_ACTIVE: 'MATCHING_ACTIVE',
   ROUND_REVEAL: 'ROUND_REVEAL',
   GAME_OVER: 'GAME_OVER',
 });
@@ -33,6 +39,11 @@ export const RECORDING_PREP_DURATION_MS = 15_000;
 export const RECORDING_DURATION_MS = 30_000;
 export const GUESSING_DURATION_MS = 60_000;
 export const RATING_DURATION_MS = 30_000;
+// WHO_SAID_IT mode: budget for the simultaneous recording phase (everyone
+// reads the same prep-then-record beats a single actor would) and for
+// guessing each individual clip's owner once matching starts.
+export const GROUP_RECORDING_DURATION_MS = RECORDING_PREP_DURATION_MS + RECORDING_DURATION_MS;
+export const MATCHING_DURATION_MS = 20_000;
 export const REVEAL_DURATION_MS = 8_000;
 
 // Transport-layer grace periods (not used by the pure state machine itself).
@@ -53,7 +64,26 @@ export const VOICE_MODIFIERS = Object.freeze([
   'ECHO',
   'DISTORT',
   'UNDERWATER',
+  'ALIEN',
+  'WHISPER',
+  'RADIO',
 ]);
+
+// Wire-format modifier keys are either a single VOICE_MODIFIERS entry, or up
+// to MAX_MODIFIERS_PER_COMBO of them joined with this separator (e.g.
+// "ROBOT+ECHO") when the actor stacks two effects — mirrors
+// client/src/dsp/effectChains.js's MODIFIER_COMBO_SEPARATOR. The server only
+// validates the shape; it has no idea what the effects actually sound like.
+export const MODIFIER_COMBO_SEPARATOR = '+';
+export const MAX_MODIFIERS_PER_COMBO = 2;
+
+export function isValidModifierCombo(modifier) {
+  if (typeof modifier !== 'string' || modifier.length === 0) return false;
+  const parts = modifier.split(MODIFIER_COMBO_SEPARATOR);
+  if (parts.length > MAX_MODIFIERS_PER_COMBO) return false;
+  if (new Set(parts).size !== parts.length) return false; // no stacking an effect with itself
+  return parts.every((part) => VOICE_MODIFIERS.includes(part));
+}
 
 // TELEPHONE mode forces this modifier on every hop of the relay chain —
 // degradation there comes from human mimicry compounding, not from picking
@@ -78,6 +108,14 @@ export const MAX_STREAK_LEVEL = 5;
 export const MIN_RATING = 1;
 export const MAX_RATING = 5;
 export const POINTS_PER_STAR = 40;
+
+// WHO_SAID_IT mode: mirrors POINTS_CORRECT_GUESS/POINTS_ACTOR_PER_CORRECT_GUESSER,
+// but the clip owner's bonus is inverted — they're rewarded per guesser they
+// evaded (a good disguise), not per guesser who got it right. No speed/streak
+// bonus here: those assume one guess per round, which doesn't map onto
+// guessing several clips per round.
+export const POINTS_CORRECT_MATCH = 100;
+export const POINTS_PER_EVADED_GUESSER = 25;
 
 // A custom-prompt game needs at least enough prompts to fill one round's
 // options; there's no server-side category to fall back on.

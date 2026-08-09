@@ -160,6 +160,113 @@ export const VOICE_MODIFIERS = {
       return crackle;
     },
   },
+
+  // Flanger: a short delay (a few ms, not the tens-to-hundreds ECHO uses)
+  // swept by a slow LFO, mixed with the dry signal. The sweeping comb
+  // filtering it produces (peaks/nulls sliding across the spectrum) is what
+  // reads as "otherworldly" rather than just delayed.
+  ALIEN: {
+    label: 'Alien',
+    playbackRate: 1.05,
+    build(ctx, source) {
+      const dry = ctx.createGain();
+      dry.gain.value = 0.6;
+
+      const delay = ctx.createDelay(0.02);
+      delay.delayTime.value = 0.006;
+
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.6;
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = 0.004; // sweeps delayTime roughly between 2ms and 10ms
+      lfo.connect(lfoGain);
+      lfoGain.connect(delay.delayTime);
+      lfo.start(0);
+
+      const wet = ctx.createGain();
+      wet.gain.value = 0.7;
+
+      source.connect(dry);
+      source.connect(delay);
+      delay.connect(wet);
+
+      const mix = ctx.createGain();
+      dry.connect(mix);
+      wet.connect(mix);
+      return mix;
+    },
+  },
+
+  // Thins the voice down to its high end and layers a quiet filtered-noise
+  // bed underneath — the noise is what actually sells "breath" rather than
+  // just "quiet and tinny".
+  WHISPER: {
+    label: 'Whisper',
+    playbackRate: 1,
+    build(ctx, source) {
+      const highpass = ctx.createBiquadFilter();
+      highpass.type = 'highpass';
+      highpass.frequency.value = 2000;
+
+      const voiceGain = ctx.createGain();
+      voiceGain.gain.value = 0.5;
+
+      source.connect(highpass);
+      highpass.connect(voiceGain);
+
+      const noiseSource = ctx.createBufferSource();
+      noiseSource.buffer = createNoiseBuffer(ctx, source.buffer.duration);
+      const noiseFilter = ctx.createBiquadFilter();
+      noiseFilter.type = 'highpass';
+      noiseFilter.frequency.value = 3000;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.value = 0.06;
+
+      noiseSource.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseSource.start(0);
+
+      const mix = ctx.createGain();
+      voiceGain.connect(mix);
+      noiseGain.connect(mix);
+      return mix;
+    },
+  },
+
+  // Walkie-talkie: a mid bandpass plus light grit, with a square-wave LFO
+  // gating the output gain for the intermittent squelch/cutout radios have —
+  // distinct from DISTORT's constant static crackle.
+  RADIO: {
+    label: 'Radio',
+    playbackRate: 1,
+    build(ctx, source) {
+      const bandpass = ctx.createBiquadFilter();
+      bandpass.type = 'bandpass';
+      bandpass.frequency.value = 1800;
+      bandpass.Q.value = 1.4;
+
+      const shaper = ctx.createWaveShaper();
+      shaper.curve = distortionCurve(10);
+      shaper.oversample = '2x';
+
+      const squelch = ctx.createGain();
+      squelch.gain.value = 0.85; // base level; the LFO swings gain around this
+
+      const lfo = ctx.createOscillator();
+      lfo.type = 'square';
+      lfo.frequency.value = 9;
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = 0.15;
+      lfo.connect(lfoGain);
+      lfoGain.connect(squelch.gain);
+      lfo.start(0);
+
+      source.connect(bandpass);
+      bandpass.connect(shaper);
+      shaper.connect(squelch);
+      return squelch;
+    },
+  },
 };
 
 function distortionCurve(amount) {
@@ -170,4 +277,45 @@ function distortionCurve(amount) {
     curve[i] = ((Math.PI + amount) * x) / (Math.PI + amount * Math.abs(x));
   }
   return curve;
+}
+
+function createNoiseBuffer(ctx, durationSeconds) {
+  const sampleRate = ctx.sampleRate;
+  const length = Math.max(1, Math.ceil(durationSeconds * sampleRate));
+  const buffer = ctx.createBuffer(1, length, sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < length; i += 1) {
+    data[i] = Math.random() * 2 - 1;
+  }
+  return buffer;
+}
+
+// Wire-format modifier keys are either a single VOICE_MODIFIERS key, or up to
+// MAX_MODIFIERS_PER_COMBO of them joined with this separator (e.g.
+// "ROBOT+ECHO") when the actor stacks two effects.
+export const MODIFIER_COMBO_SEPARATOR = '+';
+export const MAX_MODIFIERS_PER_COMBO = 2;
+
+// Resolves a wire-format modifier key into a single { label, playbackRate,
+// build() } shape processRecording can render directly. A single key
+// resolves to its own entry unchanged — existing single-effect recordings
+// are unaffected. A combo's first (primary) effect owns playbackRate
+// (stacking two rate changes would compound into something extreme); both
+// build() chains apply in sequence so the secondary effect still colors the
+// tone. Returns undefined for an unknown key/combo.
+export function resolveModifier(comboKey) {
+  const parts = String(comboKey).split(MODIFIER_COMBO_SEPARATOR);
+  if (parts.length === 1) return VOICE_MODIFIERS[parts[0]];
+
+  const modifiers = parts.map((key) => VOICE_MODIFIERS[key]);
+  if (modifiers.some((m) => !m)) return undefined;
+
+  const [primary, secondary] = modifiers;
+  return {
+    label: `${primary.label} + ${secondary.label}`,
+    playbackRate: primary.playbackRate,
+    build(ctx, source) {
+      return secondary.build(ctx, primary.build(ctx, source));
+    },
+  };
 }

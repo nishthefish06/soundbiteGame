@@ -134,6 +134,49 @@ export function DistortIcon(props) {
   );
 }
 
+export function AlienIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+      <path d="M12 2.5c-4 0-6.5 4-6.5 8.5 0 5 3 10.5 6.5 10.5s6.5-5.5 6.5-10.5c0-4.5-2.5-8.5-6.5-8.5z" {...stroke} />
+      <ellipse cx="9" cy="11" rx="1.4" ry="2.1" fill="currentColor" />
+      <ellipse cx="15" cy="11" rx="1.4" ry="2.1" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function WhisperIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+      <path d="M4 15v-4a8 8 0 0 1 16 0v4" {...stroke} />
+      <path d="M4 15a2 2 0 0 0 4 0v-2a2 2 0 0 0-4 0z" {...stroke} />
+      <path d="M16 15a2 2 0 0 0 4 0v-2a2 2 0 0 0-4 0z" {...stroke} />
+      <path d="M9 20c1 1 5 1 6 0" strokeDasharray="1.5 2" {...stroke} />
+    </svg>
+  );
+}
+
+export function RadioIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+      <path d="M9 3.5l1.5 3" {...stroke} />
+      <rect x="6" y="6.5" width="9" height="15" rx="2" {...stroke} />
+      <line x1="10.5" y1="10.5" x2="10.5" y2="10.5" strokeWidth="2.4" strokeLinecap="round" stroke="currentColor" />
+      <path d="M8.5 14h4M8.5 17h4" {...stroke} />
+    </svg>
+  );
+}
+
+export function WhoSaidItIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+      <circle cx="6.5" cy="9" r="3.5" {...stroke} />
+      <circle cx="17.5" cy="9" r="3.5" {...stroke} />
+      <path d="M9.5 10.5L14.5 10.5" {...stroke} />
+      <path d="M12 19l-2-3h-1a3 3 0 0 1-3-3M12 19l2-3h1a3 3 0 0 0 3-3" {...stroke} />
+    </svg>
+  );
+}
+
 export function CustomIcon(props) {
   return (
     <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
@@ -174,6 +217,7 @@ export const MODE_ICONS = {
   CUSTOM: CustomIcon,
   TELEPHONE: TelephoneIcon,
   PERFORMANCE: StarIcon,
+  WHO_SAID_IT: WhoSaidItIcon,
 };
 
 export const MODIFIER_ICONS = {
@@ -185,4 +229,7 @@ export const MODIFIER_ICONS = {
   ECHO: EchoIcon,
   DISTORT: DistortIcon,
   UNDERWATER: UnderwaterIcon,
+  ALIEN: AlienIcon,
+  WHISPER: WhisperIcon,
+  RADIO: RadioIcon,
 };
