@@ -5,7 +5,7 @@ import {
   MAX_PLAYERS,
   VALID_ROUND_COUNTS,
   PROMPT_OPTIONS_COUNT,
-  VOICE_MODIFIERS,
+  isValidModifierCombo,
   POINTS_CORRECT_GUESS,
   POINTS_ACTOR_PER_CORRECT_GUESSER,
   GUESSING_DURATION_MS,
@@ -17,6 +17,8 @@ import {
   MIN_RATING,
   MAX_RATING,
   POINTS_PER_STAR,
+  POINTS_CORRECT_MATCH,
+  POINTS_PER_EVADED_GUESSER,
 } from './constants.js';
 import { GAME_MODES, createPromptDeck, createPromptDecks } from './prompts.js';
 
@@ -33,6 +35,12 @@ const TELEPHONE_SOURCE_CATEGORY = 'SOUND_EFFECT';
 // prompts.js) and needs no special-casing for prompt sourcing — this
 // constant exists only for the rating-flow branches below.
 const PERFORMANCE_MODE = 'PERFORMANCE';
+
+// Also not a static category — every non-spectating player records the same
+// prompt at once (see _startWhoSaidItRound()) rather than one actor taking a
+// turn, so it reuses the SOUND_EFFECT pool exactly like TELEPHONE does.
+const WHO_SAID_IT_MODE = 'WHO_SAID_IT';
+const WHO_SAID_IT_SOURCE_CATEGORY = 'SOUND_EFFECT';
 
 // Pure, transport-agnostic game state machine for a single room.
 // Holds no socket/timer references; the transport layer wires timers
@@ -80,6 +88,21 @@ export class Room {
     this.guesses = [];
     this.correctGuesserIds = new Set();
     this.ratings = []; // PERFORMANCE mode only: [{ playerId, stars }]
+    // WHO_SAID_IT mode only: playerId -> modifier, filled during GROUP_RECORDING.
+    this.groupRecordings = new Map();
+    // WHO_SAID_IT mode only: shuffled playerId order fixed once recording
+    // closes — clipOrder[clipIndex] is the current clip's true owner. Always
+    // present in toJSON() as currentClipOwnerId; redact.js is what actually
+    // hides it from everyone but that owner (until reveal).
+    this.clipOrder = [];
+    this.clipIndex = 0;
+    // WHO_SAID_IT mode only: guesserId -> guessedPlayerId for whichever clip
+    // is currently playing, reset each time clipIndex advances.
+    this.clipGuesses = new Map();
+    // WHO_SAID_IT mode only: accumulated once per resolved clip this round —
+    // [{ clipOwnerId, correctGuesserIds }] — so ROUND_REVEAL can show the
+    // whole round's clip->owner mapping at once, not just the last clip.
+    this.clipResults = [];
     // Monotonic count of actor turns since the game started — never resets
     // at a round boundary, unlike roundNumber. Lets the transport/client
     // layers detect "a new turn just began" independent of round semantics.
@@ -228,7 +251,12 @@ export class Room {
     if (!VALID_ROUND_COUNTS.includes(totalRounds)) {
       throw new Error('INVALID_ROUND_COUNT');
     }
-    if (mode !== CUSTOM_MODE && mode !== TELEPHONE_MODE && !GAME_MODES.includes(mode)) {
+    if (
+      mode !== CUSTOM_MODE &&
+      mode !== TELEPHONE_MODE &&
+      mode !== WHO_SAID_IT_MODE &&
+      !GAME_MODES.includes(mode)
+    ) {
       throw new Error('INVALID_MODE');
     }
 
@@ -275,7 +303,7 @@ export class Room {
     const isTelephone = this.currentMode === TELEPHONE_MODE;
     if (isTelephone) {
       if (modifier !== TELEPHONE_MODIFIER) throw new Error('INVALID_MODIFIER');
-    } else if (!VOICE_MODIFIERS.includes(modifier)) {
+    } else if (!isValidModifierCombo(modifier)) {
       throw new Error('INVALID_MODIFIER');
     }
 
@@ -298,6 +326,41 @@ export class Room {
 
     this.guessingStartedAt = Date.now();
     this._transition(GameState.GUESSING_ACTIVE);
+  }
+
+  // WHO_SAID_IT mode only: one non-spectating player's simultaneous
+  // recording. Unlike submitRecording there's no single actor to assert —
+  // any eligible player may submit once. Once everyone eligible has, moves
+  // straight to matching.
+  submitGroupRecording(playerId, modifier) {
+    this._assertState(GameState.GROUP_RECORDING);
+    const player = this.players.get(playerId);
+    if (!player) throw new Error('UNKNOWN_PLAYER');
+    if (player.spectating) throw new Error('SPECTATING');
+    if (this.groupRecordings.has(playerId)) throw new Error('ALREADY_SUBMITTED');
+    if (!isValidModifierCombo(modifier)) throw new Error('INVALID_MODIFIER');
+
+    this.groupRecordings.set(playerId, modifier);
+    const total = this._eligibleRecorderCount();
+    this.emitter.emit('groupRecordingProgress', { room: this.code, count: this.groupRecordings.size, total });
+
+    if (this.groupRecordings.size >= total) {
+      this._startMatching();
+    }
+  }
+
+  // Called by the transport layer when the group-recording timer runs out
+  // before everyone eligible has submitted. Proceeds with whoever did; with
+  // fewer than 2 clips there's nothing to match against, so the round is
+  // skipped instead — same "graceful skip" the single-actor modes use when
+  // an actor vanishes mid-round (see removePlayer()/abortRound()).
+  finishGroupRecording() {
+    this._assertState(GameState.GROUP_RECORDING);
+    if (this.groupRecordings.size < 2) {
+      this._advanceTurnOrEndGame();
+      return;
+    }
+    this._startMatching();
   }
 
   submitGuess(playerId, rawText) {
@@ -348,6 +411,44 @@ export class Room {
   endGuessing() {
     this._assertState(GameState.GUESSING_ACTIVE);
     this._transition(GameState.ROUND_REVEAL);
+  }
+
+  // WHO_SAID_IT mode only: a guess at who recorded the clip currently
+  // playing. Structurally parallel to submitGuess but not its text/synonym
+  // matching (same reasoning PERFORMANCE got its own submitRating instead of
+  // overloading submitGuess) — scores immediately, same as submitGuess does.
+  submitMatchGuess(guesserId, guessedPlayerId) {
+    this._assertState(GameState.MATCHING_ACTIVE);
+    const guesser = this.players.get(guesserId);
+    if (!guesser) throw new Error('UNKNOWN_PLAYER');
+    if (this._performerIds().has(guesserId)) throw new Error('OWNER_CANNOT_GUESS_OWN_CLIP');
+    if (guesser.spectating) throw new Error('SPECTATING');
+    if (this.clipGuesses.has(guesserId)) throw new Error('ALREADY_GUESSED');
+    if (!this.groupRecordings.has(guessedPlayerId)) throw new Error('INVALID_GUESS_TARGET');
+
+    this.clipGuesses.set(guesserId, guessedPlayerId);
+
+    const ownerId = this.clipOrder[this.clipIndex];
+    if (guessedPlayerId === ownerId) {
+      guesser.score += POINTS_CORRECT_MATCH;
+    } else {
+      // Rewards a good disguise: the owner earns this per guesser they
+      // evaded, not per guesser who caught them.
+      const owner = this.players.get(ownerId);
+      if (owner) owner.score += POINTS_PER_EVADED_GUESSER;
+    }
+    this._emitPlayersChanged();
+
+    if (this.clipGuesses.size === this._eligiblePlayerCount()) {
+      this._resolveClip();
+    }
+  }
+
+  // Called by the transport layer when a clip's matching timer runs out
+  // before everyone eligible has guessed.
+  endMatching() {
+    this._assertState(GameState.MATCHING_ACTIVE);
+    this._resolveClip();
   }
 
   // PERFORMANCE mode only: a rater scores the actor's performance 1-5 stars.
@@ -415,6 +516,25 @@ export class Room {
       currentPrompt: this.currentPrompt,
       correctGuesserIds: [...this.correctGuesserIds],
       ratings: this.ratings,
+      // WHO_SAID_IT mode only. currentClipOwnerId is the raw truth (who
+      // really recorded the clip currently playing) — redact.js is what
+      // actually hides it from everyone but that owner before ROUND_REVEAL;
+      // it's present here unconditionally the same way currentPrompt is.
+      currentClipOwnerId: this.clipOrder[this.clipIndex] ?? null,
+      clipIndex: this.clipIndex,
+      totalClips: this.clipOrder.length,
+      clipResults: this.clipResults,
+      // Who has already guessed the current clip — safe to expose raw (no
+      // redaction needed) since it only reveals *that* someone answered, not
+      // *what* they guessed, same class of info as correctGuesserIds above.
+      clipGuesserIds: [...this.clipGuesses.keys()],
+      // The *unordered* set of players who recorded a clip this round — safe
+      // to expose raw (unlike clipOrder, which is a sequence and would leak
+      // the current clip's position/identity). Lets clients build a valid
+      // guess-target list without offering a player who never submitted
+      // (e.g. one who disconnected, or never got the mic during
+      // GROUP_RECORDING) and getting INVALID_GUESS_TARGET back.
+      recordedPlayerIds: [...this.groupRecordings.keys()],
       players: this.playerList.map(({ id, name, score, connected, streak, spectating }) => ({
         id,
         name,
@@ -458,9 +578,28 @@ export class Room {
   }
 
   // "Performers" are whoever isn't eligible to guess this round: the lone
-  // actor normally, or the whole relay chain in TELEPHONE mode.
+  // actor normally, the whole relay chain in TELEPHONE mode, or — in
+  // WHO_SAID_IT — just the current clip's owner (everyone else who recorded
+  // is eligible to guess it, including players who'll own a later clip).
   _performerIds() {
-    return this.currentMode === TELEPHONE_MODE ? new Set(this.chainOrder) : new Set([this.actorId]);
+    if (this.currentMode === TELEPHONE_MODE) return new Set(this.chainOrder);
+    if (this.currentMode === WHO_SAID_IT_MODE) {
+      const ownerId = this.clipOrder[this.clipIndex];
+      return ownerId ? new Set([ownerId]) : new Set();
+    }
+    return new Set([this.actorId]);
+  }
+
+  // WHO_SAID_IT mode only: how many non-spectating players must submit a
+  // recording before GROUP_RECORDING can close. Unlike _eligiblePlayerCount()
+  // this counts everyone, not "everyone but the performer(s)" — during
+  // GROUP_RECORDING there's no clip owner yet to exclude.
+  _eligibleRecorderCount() {
+    let count = 0;
+    for (const player of this.playerList) {
+      if (!player.spectating) count += 1;
+    }
+    return count;
   }
 
   // Players who can currently guess/rate: not a performer this round, and
@@ -501,6 +640,9 @@ export class Room {
   // "is what comes next a new round?" without side effects.
   _peekStartsNewRound() {
     if (this.roundNumber === 0) return true;
+    // No multi-turn-per-round concept here — every player records
+    // simultaneously, so round and turn coincide.
+    if (this.currentMode === WHO_SAID_IT_MODE) return true;
     return this.actorsThisRound.has(this.actorOrder[0]);
   }
 
@@ -511,6 +653,11 @@ export class Room {
       this._promoteSpectators();
     }
     this.turnNumber += 1;
+
+    if (this.currentMode === WHO_SAID_IT_MODE) {
+      this._startWhoSaidItRound();
+      return;
+    }
 
     if (this.currentMode === TELEPHONE_MODE) {
       this._advanceChain(this._telephoneChainLength());
@@ -549,6 +696,70 @@ export class Room {
     this._transition(GameState.PROMPT_SELECTION);
   }
 
+  // WHO_SAID_IT mode's round start: no actor rotation, no PROMPT_SELECTION —
+  // nobody picks among options, so the single drawn prompt is shown to
+  // everyone directly inside the recording view. Goes straight to
+  // GROUP_RECORDING; matching (and its own prompt-free clip-by-clip flow)
+  // starts once every eligible player has submitted (see _startMatching()).
+  _startWhoSaidItRound() {
+    this.actorId = null;
+    this.chainOrder = [];
+    this.chainIndex = 0;
+    this.promptOptions = [];
+    this.groupRecordings = new Map();
+    this.clipOrder = [];
+    this.clipIndex = 0;
+    this.clipGuesses = new Map();
+    this.clipResults = [];
+    this.currentModifier = null;
+
+    const deck = this.promptDecks[WHO_SAID_IT_SOURCE_CATEGORY];
+    if (deck.length < 1) {
+      this.promptDecks[WHO_SAID_IT_SOURCE_CATEGORY] = createPromptDeck(WHO_SAID_IT_SOURCE_CATEGORY);
+    }
+    const chosen = this.promptDecks[WHO_SAID_IT_SOURCE_CATEGORY].pop();
+    this.currentPrompt = chosen.text;
+    this.currentPromptAnswers = [];
+
+    this._transition(GameState.GROUP_RECORDING);
+  }
+
+  // WHO_SAID_IT mode: recording has closed (everyone eligible submitted, or
+  // the phase timer forced it) — fix the shuffled clip order and start
+  // guessing the first clip.
+  _startMatching() {
+    this.clipOrder = shuffle([...this.groupRecordings.keys()]);
+    this.clipIndex = 0;
+    this.clipGuesses = new Map();
+    // One "turn" per clip so the client's existing per-turn reset (clearing
+    // chat/incoming audio on a turnNumber change) also clears them between
+    // clips, without needing any new client-side bookkeeping.
+    this.turnNumber += 1;
+    this._transition(GameState.MATCHING_ACTIVE);
+  }
+
+  // WHO_SAID_IT mode: the current clip has been guessed by everyone eligible
+  // (or its matching timer ran out) — record the recap entry, then either
+  // move to the next clip or, if that was the last one, reveal the round.
+  // Scores are already applied per-guess in submitMatchGuess, mirroring
+  // submitGuess's immediate-scoring style — this only builds the recap.
+  _resolveClip() {
+    const ownerId = this.clipOrder[this.clipIndex];
+    const correctGuesserIds = [...this.clipGuesses.entries()]
+      .filter(([, guessedId]) => guessedId === ownerId)
+      .map(([guesserId]) => guesserId);
+    this.clipResults.push({ clipOwnerId: ownerId, correctGuesserIds });
+
+    if (this.clipIndex < this.clipOrder.length - 1) {
+      this.clipIndex += 1;
+      this.clipGuesses = new Map();
+      this.turnNumber += 1;
+      this._transition(GameState.MATCHING_ACTIVE);
+    } else {
+      this._transition(GameState.ROUND_REVEAL);
+    }
+  }
+
   // Elapsed time is measured from when the recording was submitted (i.e. when
   // guessing actually opened), decaying linearly to 0 by the time the
   // guessing timer would run out.
@@ -579,8 +790,10 @@ export class Room {
   // spectators, who structurally couldn't guess either.
   _updateStreaks() {
     // PERFORMANCE mode raters aren't guessing anything right or wrong, so
-    // streaks (a guessing-mode concept) don't apply here.
-    if (this.currentMode === PERFORMANCE_MODE) return;
+    // streaks (a guessing-mode concept) don't apply here. WHO_SAID_IT scores
+    // per-clip matches immediately (see submitMatchGuess) rather than once
+    // per round, so a single per-round streak doesn't map onto it either.
+    if (this.currentMode === PERFORMANCE_MODE || this.currentMode === WHO_SAID_IT_MODE) return;
 
     const performers = this._performerIds();
     for (const player of this.playerList) {
@@ -616,6 +829,11 @@ export class Room {
     this.guesses = [];
     this.correctGuesserIds = new Set();
     this.ratings = [];
+    this.groupRecordings = new Map();
+    this.clipOrder = [];
+    this.clipIndex = 0;
+    this.clipGuesses = new Map();
+    this.clipResults = [];
   }
 
   _resetGame() {
