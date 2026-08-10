@@ -1,0 +1,363 @@
+/* Standalone styling for the composer prototype — deliberately not sharing
+   client/src/index.css so this can't collide with in-progress game styling. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #17171c;
+  color: #f0eee8;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.proto-shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0 0 6px;
+}
+
+h2 {
+  font-size: 1rem;
+  margin: 0 0 12px;
+  color: #cfcac0;
+}
+
+.muted {
+  color: #9a958c;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.panel {
+  background: #1f1f27;
+  border: 1px solid #2c2c36;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.btn {
+  background: #3a3a48;
+  color: #f0eee8;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: #46465a;
+}
+
+.btn-active {
+  background: #d9534f;
+}
+
+.btn-record {
+  background: #c0392b;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid #3a3a48;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmented button {
+  background: transparent;
+  color: #cfcac0;
+  border: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.segmented button.active {
+  background: #6c63ff;
+  color: white;
+}
+
+.drum-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-x: auto;
+  border: 1px solid #2c2c36;
+  border-radius: 8px;
+  padding: 4px 0;
+}
+
+.drum-row {
+  display: flex;
+  align-items: center;
+  min-width: 628px;
+}
+
+.drum-row-label {
+  width: 52px;
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  color: #cfcac0;
+  position: sticky;
+  left: 0;
+  background: #1f1f27;
+  padding-left: 2px;
+}
+
+.drum-row-steps {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+}
+
+.drum-step {
+  width: 18px;
+  flex-shrink: 0;
+  height: 26px;
+  border-radius: 4px;
+  background: #2c2c36;
+  border: none;
+  cursor: pointer;
+}
+
+.drum-step:hover {
+  background: #3a3a48;
+}
+
+.drum-step-beat {
+  background: #33333f;
+}
+
+.drum-step-on {
+  background: #6c63ff;
+}
+
+.drum-step-on:hover {
+  background: #8079ff;
+}
+
+.drum-step-playhead {
+  outline: 2px solid #f0eee8;
+  outline-offset: -2px;
+}
+
+code {
+  background: #2c2c36;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.85em;
+}
+
+.track-label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #8079ff;
+  margin: 18px 0 10px;
+}
+
+.piano-roll {
+  display: flex;
+  flex-direction: column;
+  max-height: 380px;
+  overflow-y: auto;
+  overflow-x: auto;
+  border: 1px solid #2c2c36;
+  border-radius: 8px;
+}
+
+.piano-roll-row {
+  display: flex;
+  align-items: stretch;
+  min-width: 620px;
+}
+
+.piano-roll-row-black {
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.piano-roll-label {
+  width: 44px;
+  flex-shrink: 0;
+  background: #2c2c36;
+  color: #cfcac0;
+  border: none;
+  border-right: 1px solid #17171c;
+  font-size: 0.7rem;
+  cursor: pointer;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.piano-roll-label:hover {
+  background: #3a3a48;
+}
+
+.piano-roll-steps {
+  display: flex;
+}
+
+.piano-roll-cell {
+  width: 18px;
+  flex-shrink: 0;
+  height: 22px;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-left: 1px solid rgba(255, 255, 255, 0.03);
+  background: transparent;
+  cursor: pointer;
+}
+
+.piano-roll-cell-beat {
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.piano-roll-cell:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Note bodies: a slightly muted fill for the note's full span, brighter at
+   the head (where it starts) and rounded at head/tail so a multi-cell note
+   reads as one connected block rather than separate squares. */
+.piano-roll-cell-on {
+  background: #5a52d1;
+}
+
+.piano-roll-cell-on:hover {
+  background: #6c63ff;
+}
+
+.piano-roll-cell-head.piano-roll-cell-on {
+  background: #6c63ff;
+  border-radius: 4px 0 0 4px;
+}
+
+.piano-roll-cell-tail.piano-roll-cell-on {
+  border-radius: 0 4px 4px 0;
+}
+
+.piano-roll-cell-head.piano-roll-cell-tail.piano-roll-cell-on {
+  border-radius: 4px;
+}
+
+.piano-roll-cell-playhead {
+  outline: 1px solid #f0eee8;
+  outline-offset: -1px;
+}
+
+.chord-label {
+  margin-right: 2px;
+}
+
+.insert-slots {
+  flex-wrap: wrap;
+}
+
+.insert-slots button {
+  padding: 8px 10px;
+}
+
+.chord-form {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  min-width: 220px;
+}
+
+.chord-input {
+  flex: 1;
+  background: #2c2c36;
+  border: 1px solid #3a3a48;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #f0eee8;
+  font-size: 0.9rem;
+}
+
+.chord-input::placeholder {
+  color: #6c6a72;
+}
+
+.chord-error {
+  color: #ff8a80;
+  font-size: 0.8rem;
+}
+
+.playback {
+  margin-top: 8px;
+}
+
+.playback audio {
+  width: 100%;
+}
+
+.credit {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.song-panel {
+  border-color: #6c63ff;
+}
+
+.song-name {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 4px 0 14px;
+}
+
+.song-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.song-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  background: #2c2c36;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.song-choice:hover {
+  background: #3a3a48;
+}
+
+.song-choice-title {
+  font-weight: 700;
+}
+
+.song-choice-artist {
+  font-size: 0.85rem;
+}
