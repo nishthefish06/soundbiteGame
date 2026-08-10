@@ -29,6 +29,14 @@ h2 {
   color: #cfcac0;
 }
 
+.tracks-header {
+  justify-content: space-between;
+}
+
+.tracks-heading {
+  margin: 0;
+}
+
 .muted {
   color: #9a958c;
   font-size: 0.85rem;
@@ -172,12 +180,82 @@ code {
   font-size: 0.85em;
 }
 
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: #17171c;
+  border: 1px solid #2c2c36;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 4px;
+}
+
+.btn-transport {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  min-width: 76px;
+}
+
+.bpm-readout {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  color: #cfcac0;
+  min-width: 2ch;
+}
+
 .track-label {
-  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
+  margin: 20px 0 10px;
+}
+
+.track-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.track-label-melody {
   color: #8079ff;
-  margin: 18px 0 10px;
+}
+
+.track-label-bass {
+  color: #4fd1c5;
+}
+
+.track-label-drums {
+  color: #f0a868;
+}
+
+.bar-ruler {
+  display: flex;
+}
+
+.bar-ruler-spacer {
+  width: 44px;
+  flex-shrink: 0;
+}
+
+.bar-ruler-marks {
+  display: flex;
+  flex: 1;
+}
+
+.bar-ruler-mark {
+  width: 72px;
+  flex-shrink: 0;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.65rem;
+  color: #6c6a72;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  padding-left: 4px;
 }
 
 .piano-roll {
@@ -187,7 +265,20 @@ code {
   overflow-y: auto;
   overflow-x: auto;
   border: 1px solid #2c2c36;
+  border-left-width: 3px;
   border-radius: 8px;
+}
+
+.piano-roll-melody {
+  border-left-color: #6c63ff;
+}
+
+.piano-roll-bass {
+  border-left-color: #38b2ac;
+}
+
+.drum-grid-drums {
+  border-left: 3px solid #d97b32;
 }
 
 .piano-roll-row {
@@ -268,6 +359,68 @@ code {
 .piano-roll-cell-playhead {
   outline: 1px solid #f0eee8;
   outline-offset: -1px;
+}
+
+.live-keyboard {
+  display: flex;
+  align-items: flex-start;
+  overflow-x: auto;
+  border: 1px solid #2c2c36;
+  border-left-width: 3px;
+  border-radius: 8px;
+}
+
+.live-keyboard-melody {
+  border-left-color: #6c63ff;
+}
+
+.live-key {
+  flex: 0 0 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 8px;
+  border: none;
+  border-right: 1px solid #17171c;
+  cursor: pointer;
+  font-size: 0.7rem;
+}
+
+.live-keyboard-scale .live-key {
+  flex-basis: 40px;
+}
+
+.live-key-white {
+  background: #eee8dd;
+  color: #444;
+  height: 130px;
+}
+
+.live-key-white:hover {
+  background: #ddd6c8;
+}
+
+.live-key-black {
+  background: #17171c;
+  color: #ddd;
+  height: 86px;
+}
+
+.live-key-black:hover {
+  background: #2c2c36;
+}
+
+.live-key-pressed {
+  filter: brightness(0.75);
+}
+
+.live-key-hint {
+  display: block;
+  font-size: 0.6rem;
+  opacity: 0.6;
+  text-transform: uppercase;
+  margin-top: 3px;
 }
 
 .chord-label {

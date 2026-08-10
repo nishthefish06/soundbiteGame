@@ -43,36 +43,62 @@ export const MELODY_SCALE_STEPS = buildScaleRange(-12, 12);
 export const BASS_CHROMATIC = buildChromaticRange(-36, -12);
 export const BASS_SCALE_STEPS = buildScaleRange(-36, -12);
 
-// A few diatonic C-major triads for the chord palette — deliberately just
-// these 4 (the classic "four chord song" pop progression), voiced to sit
-// within the melody track's default range. Each is guaranteed to land on
-// real rows in both chromatic and scale-snapped mode, since all 3 notes of
-// each chord are themselves major-scale degrees.
-export const CHORD_PALETTE = [
-  { label: 'C', semitones: [0, 4, 7] },
-  { label: 'F', semitones: [-7, -3, 0] },
-  { label: 'G', semitones: [-5, -1, 2] },
-  { label: 'Am', semitones: [-3, 0, 4] },
-];
-
 function semitoneToFreq(semitone) {
   return C4_FREQ * 2 ** (semitone / 12);
+}
+
+// Soft (tanh) saturation curve for a WaveShaperNode — adds harmonic grit to
+// an otherwise-pure sine, which is most of what makes a synth sine read as
+// "808" rather than just "sine wave." Cached per drive amount since it's
+// recomputed on every bass hit otherwise.
+const saturationCurveCache = new Map();
+function getSaturationCurve(amount) {
+  if (saturationCurveCache.has(amount)) return saturationCurveCache.get(amount);
+  const samples = 256;
+  const curve = new Float32Array(samples);
+  for (let i = 0; i < samples; i += 1) {
+    const x = (i / (samples - 1)) * 2 - 1;
+    curve[i] = Math.tanh(amount * x) / Math.tanh(amount);
+  }
+  saturationCurveCache.set(amount, curve);
+  return curve;
 }
 
 const STEPS_PER_LOOP = 32;
 export { STEPS_PER_LOOP };
 
-// A few selectable timbres. sustainGain is the note's held level;
-// attack/release shape how fast it gets there and fades. The first four are
-// plain oscillators; PIANO is sample-based (see below).
+// A few selectable timbres, each tagged with which track(s) it makes sense
+// on — melody wants lead/pad-ish tones, bass wants low/sub-register ones,
+// so the two tracks get their own option lists rather than one shared list
+// where half the choices don't make sense for that track. sustainGain is
+// the note's held level; attack/release shape how fast it gets there and
+// fades. Non-PIANO entries are plain oscillators; PIANO is sample-based
+// (see below). The bass entries additionally use pitchDrop (a classic
+// 808's pitched "thump" at the start of the note, gliding down into the
+// sub) and/or a touch of waveshaper saturation for grit — see playGridNote
+// for how those get applied.
 export const INSTRUMENTS = {
-  PLUCK: { label: 'Pluck', kind: 'synth', type: 'triangle', attack: 0.008, sustainGain: 0.35, release: 0.15 },
-  LEAD: { label: 'Synth Lead', kind: 'synth', type: 'sawtooth', attack: 0.015, sustainGain: 0.22, release: 0.1 },
-  PAD: { label: 'Soft Pad', kind: 'synth', type: 'sine', attack: 0.09, sustainGain: 0.32, release: 0.35 },
-  CHIPTUNE: { label: 'Chiptune', kind: 'synth', type: 'square', attack: 0.004, sustainGain: 0.16, release: 0.06 },
-  PIANO: { label: 'Grand Piano', kind: 'sample', attack: 0.004, sustainGain: 0.9, release: 0.4 },
+  PLUCK: { label: 'Pluck', kind: 'synth', type: 'triangle', attack: 0.008, sustainGain: 0.35, release: 0.15, tracks: ['melody'] },
+  LEAD: { label: 'Synth Lead', kind: 'synth', type: 'sawtooth', attack: 0.015, sustainGain: 0.22, release: 0.1, tracks: ['melody'] },
+  PAD: { label: 'Soft Pad', kind: 'synth', type: 'sine', attack: 0.09, sustainGain: 0.32, release: 0.35, tracks: ['melody'] },
+  CHIPTUNE: { label: 'Chiptune', kind: 'synth', type: 'square', attack: 0.004, sustainGain: 0.16, release: 0.06, tracks: ['melody'] },
+  PIANO: { label: 'Grand Piano', kind: 'sample', attack: 0.004, sustainGain: 0.9, release: 0.4, tracks: ['melody'] },
+  SUB808: {
+    label: '808 Bass',
+    kind: 'synth',
+    type: 'sine',
+    attack: 0.008,
+    sustainGain: 0.6,
+    release: 0.3,
+    pitchDrop: { fromRatio: 1.9, timeSec: 0.07 },
+    drive: 6,
+    tracks: ['bass'],
+  },
+  SUB_SINE: { label: 'Sub Sine', kind: 'synth', type: 'sine', attack: 0.02, sustainGain: 0.5, release: 0.4, tracks: ['bass'] },
+  BASS_PLUCK: { label: 'Bass Pluck', kind: 'synth', type: 'triangle', attack: 0.005, sustainGain: 0.45, release: 0.12, drive: 2, tracks: ['bass'] },
 };
 export const DEFAULT_INSTRUMENT = 'PLUCK';
+export const DEFAULT_BASS_INSTRUMENT = 'SUB808';
 
 // Piano samples: Salamander Grand Piano by Alexander Holm (CC BY 3.0),
 // https://archive.org/details/SalamanderGrandPianoV3 — 4 recorded notes
@@ -147,22 +173,54 @@ export function createComposerEngine() {
   // rather than needing an explicit note-off. `osc` is either an
   // OscillatorNode or an AudioBufferSourceNode; both expose .stop(time), so
   // the rest of the function doesn't care which.
-  function playGridNote(semitone, instrumentId, time, duration) {
-    const instrument = INSTRUMENTS[instrumentId] || INSTRUMENTS[DEFAULT_INSTRUMENT];
 
-    let osc;
+  // Builds the sound source for a note (sample playback or an oscillator,
+  // with the 808-style pitch-drop applied if the instrument has one) —
+  // shared between grid notes (fixed duration) and live-piano notes (held
+  // until released), which otherwise differ only in how the envelope ends.
+  function createVoiceOscillator(semitone, instrument, time) {
     if (instrument.kind === 'sample') {
       const anchorNote = nearestPianoAnchor(semitone);
       const buffer = pianoBuffers.get(anchorNote);
-      if (!buffer) return; // samples not loaded yet — silently skip this note
-      osc = ctx.createBufferSource();
+      if (!buffer) return null; // samples not loaded yet — silently skip this note
+      const osc = ctx.createBufferSource();
       osc.buffer = buffer;
       osc.playbackRate.value = 2 ** ((semitone - PIANO_SAMPLE_ANCHOR_SEMITONES[anchorNote]) / 12);
-    } else {
-      osc = ctx.createOscillator();
-      osc.type = instrument.type;
-      osc.frequency.value = semitoneToFreq(semitone);
+      return osc;
     }
+    const osc = ctx.createOscillator();
+    osc.type = instrument.type;
+    const targetFreq = semitoneToFreq(semitone);
+    if (instrument.pitchDrop) {
+      // The classic 808 "thump": starts pitched up, glides down into the
+      // sub within the first ~70ms — that transient is most of what makes
+      // it read as a struck bass note rather than a held tone.
+      osc.frequency.setValueAtTime(targetFreq * instrument.pitchDrop.fromRatio, time);
+      osc.frequency.exponentialRampToValueAtTime(targetFreq, time + instrument.pitchDrop.timeSec);
+    } else {
+      osc.frequency.value = targetFreq;
+    }
+    return osc;
+  }
+
+  // Routes a voice through the instrument's saturation (if it has one) on
+  // its way to `destination`.
+  function connectVoice(osc, instrument, destination) {
+    if (!instrument.drive) {
+      osc.connect(destination);
+      return;
+    }
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = getSaturationCurve(instrument.drive);
+    shaper.oversample = '2x';
+    osc.connect(shaper);
+    shaper.connect(destination);
+  }
+
+  function playGridNote(semitone, instrumentId, time, duration) {
+    const instrument = INSTRUMENTS[instrumentId] || INSTRUMENTS[DEFAULT_INSTRUMENT];
+    const osc = createVoiceOscillator(semitone, instrument, time);
+    if (!osc) return;
 
     const env = ctx.createGain();
     const releaseStart = time + Math.max(duration - instrument.release, instrument.attack + 0.01);
@@ -171,10 +229,45 @@ export function createComposerEngine() {
     env.gain.setValueAtTime(instrument.sustainGain, releaseStart);
     env.gain.exponentialRampToValueAtTime(0.0001, releaseStart + instrument.release);
 
-    osc.connect(env);
+    connectVoice(osc, instrument, env);
     env.connect(masterGain);
     osc.start(time);
     osc.stop(releaseStart + instrument.release + 0.02);
+  }
+
+  // Held notes for the live-piano keyboard — keyed by an arbitrary
+  // caller-chosen id (e.g. the key's label) so noteOn/noteOff pairs match
+  // up even if the instrument changes mid-hold.
+  const activeVoices = new Map();
+
+  function startLiveVoice(id, semitone, instrumentId) {
+    if (activeVoices.has(id)) return;
+    const instrument = INSTRUMENTS[instrumentId] || INSTRUMENTS[DEFAULT_INSTRUMENT];
+    const time = ctx.currentTime;
+    const osc = createVoiceOscillator(semitone, instrument, time);
+    if (!osc) return;
+
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, time);
+    env.gain.linearRampToValueAtTime(instrument.sustainGain, time + instrument.attack);
+
+    connectVoice(osc, instrument, env);
+    env.connect(masterGain);
+    osc.start(time);
+
+    activeVoices.set(id, { osc, env, instrument, startTime: time });
+  }
+
+  function stopLiveVoice(id) {
+    const voice = activeVoices.get(id);
+    if (!voice) return;
+    activeVoices.delete(id);
+    const { osc, env, instrument, startTime } = voice;
+    const releaseFrom = Math.max(ctx.currentTime, startTime + 0.02);
+    env.gain.cancelScheduledValues(releaseFrom);
+    env.gain.setValueAtTime(env.gain.value, releaseFrom);
+    env.gain.exponentialRampToValueAtTime(0.0001, releaseFrom + instrument.release);
+    osc.stop(releaseFrom + instrument.release + 0.05);
   }
 
   function loadPianoSamples() {
@@ -207,6 +300,22 @@ export function createComposerEngine() {
     osc.stop(time + 0.2);
   }
 
+  function playTom(time) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(220, time);
+    osc.frequency.exponentialRampToValueAtTime(110, time + 0.18);
+
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.7, time);
+    env.gain.exponentialRampToValueAtTime(0.001, time + 0.28);
+
+    osc.connect(env);
+    env.connect(masterGain);
+    osc.start(time);
+    osc.stop(time + 0.3);
+  }
+
   function playNoiseHit(time, { freqLow, freqHigh, type, gain, decay }) {
     const src = ctx.createBufferSource();
     src.buffer = noiseBuffer;
@@ -235,6 +344,23 @@ export function createComposerEngine() {
     playNoiseHit(time, { freqHigh: 7000, type: 'highpass', gain: 0.2, decay: 0.06 });
   }
 
+  function playOpenHat(time) {
+    playNoiseHit(time, { freqHigh: 6000, type: 'highpass', gain: 0.18, decay: 0.3 });
+  }
+
+  function playRim(time) {
+    playNoiseHit(time, { freqLow: 3200, type: 'bandpass', gain: 0.3, decay: 0.04 });
+  }
+
+  // A real clap is a few quick, slightly-offset noise bursts rather than
+  // one hit — layering 3 close together (each a hair quieter and later)
+  // reads as a clap instead of just a second snare.
+  function playClap(time) {
+    [0, 0.012, 0.024].forEach((offset, i) => {
+      playNoiseHit(time + offset, { freqLow: 1200, type: 'bandpass', gain: 0.4 - i * 0.08, decay: 0.13 });
+    });
+  }
+
   // A track's rows are [{ semitone, notes: [{start, length}] }]. A note
   // sounds only on the step it starts at, held for `length` steps.
   function scheduleTrackStep(track, step, time, duration) {
@@ -245,12 +371,17 @@ export function createComposerEngine() {
     });
   }
 
+  // Maps each drum row id (see DRUM_ROWS in ComposerPrototype.jsx) to the
+  // function that plays it — keeps scheduleStep from needing a hand-written
+  // if-statement per drum sound.
+  const drumSounds = { kick: playKick, snare: playSnare, hihat: playHihat, openhat: playOpenHat, clap: playClap, tom: playTom, rim: playRim };
+
   function scheduleStep(step, time) {
     const drumPattern = getDrumPatternFn?.();
     if (drumPattern) {
-      if (drumPattern.kick[step]) playKick(time);
-      if (drumPattern.snare[step]) playSnare(time);
-      if (drumPattern.hihat[step]) playHihat(time);
+      Object.entries(drumSounds).forEach(([id, play]) => {
+        if (drumPattern[id]?.[step]) play(time);
+      });
     }
 
     const tracks = getTracksFn?.();
@@ -314,6 +445,24 @@ export function createComposerEngine() {
       ensureContext();
       ctx.resume?.();
       playGridNote(semitone, instrumentId, ctx.currentTime, 0.35);
+    },
+
+    // Live-piano keyboard: starts/stops a held note. `id` is caller-chosen
+    // (e.g. the key's label) so a noteOff always matches its noteOn.
+    noteOn(id, semitone, instrumentId) {
+      ensureContext();
+      ctx.resume?.();
+      startLiveVoice(id, semitone, instrumentId);
+    },
+
+    noteOff(id) {
+      if (!ctx) return;
+      stopLiveVoice(id);
+    },
+
+    stopAllNotes() {
+      if (!ctx) return;
+      Array.from(activeVoices.keys()).forEach(stopLiveVoice);
     },
 
     startRecording() {

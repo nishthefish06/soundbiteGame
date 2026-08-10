@@ -5,10 +5,10 @@ import {
   MELODY_SCALE_STEPS,
   BASS_CHROMATIC,
   BASS_SCALE_STEPS,
-  CHORD_PALETTE,
   STEPS_PER_LOOP,
   INSTRUMENTS,
   DEFAULT_INSTRUMENT,
+  DEFAULT_BASS_INSTRUMENT,
 } from './audioEngine.js';
 import { SONGS } from './songs.js';
 
@@ -29,10 +29,30 @@ const SCALE_DEGREE_LABELS = ['1', '2', '3', '4', '5', '6', '7', '1', '2', '3', '
 const DRUM_ROWS = [
   { id: 'kick', label: 'Kick' },
   { id: 'snare', label: 'Snare' },
+  { id: 'clap', label: 'Clap' },
   { id: 'hihat', label: 'Hi-hat' },
+  { id: 'openhat', label: 'Open Hat' },
+  { id: 'tom', label: 'Tom' },
+  { id: 'rim', label: 'Rim' },
 ];
+// Simple mode shows just the core kit; Advanced reveals the rest.
+const SIMPLE_DRUM_ROW_IDS = new Set(['kick', 'snare', 'hihat']);
 
-const INSTRUMENT_OPTIONS = Object.entries(INSTRUMENTS).map(([id, def]) => ({ id, label: def.label }));
+function instrumentOptionsFor(track) {
+  return Object.entries(INSTRUMENTS)
+    .filter(([, def]) => def.tracks.includes(track))
+    .map(([id, def]) => ({ id, label: def.label }));
+}
+const MELODY_INSTRUMENT_OPTIONS = instrumentOptionsFor('melody');
+const BASS_INSTRUMENT_OPTIONS = instrumentOptionsFor('bass');
+
+// Live Piano's computer-keyboard bindings — only the middle octave gets a
+// physical key (there's no clean way to fit 2 octaves on one QWERTY row),
+// keyed by semitone so it stays correct regardless of the mode's row order.
+const CHROMATIC_KEY_BINDINGS = { 0: 'a', 1: 'w', 2: 's', 3: 'e', 4: 'd', 5: 'f', 6: 't', 7: 'g', 8: 'y', 9: 'h', 10: 'u', 11: 'j', 12: 'k' };
+const SCALE_KEY_BINDINGS = { 0: 'a', 2: 's', 4: 'd', 5: 'f', 7: 'g', 9: 'h', 11: 'j', 12: 'k' };
+const CHROMATIC_KEY_TO_SEMITONE = Object.fromEntries(Object.entries(CHROMATIC_KEY_BINDINGS).map(([semi, key]) => [key, Number(semi)]));
+const SCALE_KEY_TO_SEMITONE = Object.fromEntries(Object.entries(SCALE_KEY_BINDINGS).map(([semi, key]) => [key, Number(semi)]));
 
 // How many steps a stamped chord spans, and how many insertion slots that
 // divides the 32-step grid into (8 slots of 4 steps each).
@@ -77,23 +97,55 @@ function findFreeSlot(pattern, rowIndices, length) {
 
 const CHORD_ROOT_SEMITONES = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
-// Parses a plain chord symbol (root + optional #/b + optional "m" for
-// minor) into a [root, third, fifth] triad, voiced in whichever octave
-// keeps the root closest to C4 — matches how CHORD_PALETTE's hand-picked
-// chords are voiced. Doesn't handle 7ths/dim/aug/slash chords; good enough
+// Interval sets (semitones above the root) for each supported chord
+// quality. Extensions (9ths) go past an octave — those get folded back down
+// below, which can land outside the current key's scale degrees, so
+// extended/altered chords only place successfully in Chromatic mode, not
+// Snapped-to-key (the row just won't exist there, same as any other
+// chromatic note typed while scale-snapped).
+const CHORD_QUALITY_INTERVALS = {
+  '': [0, 4, 7],
+  m: [0, 3, 7],
+  min: [0, 3, 7],
+  dim: [0, 3, 6],
+  aug: [0, 4, 8],
+  sus2: [0, 2, 7],
+  sus4: [0, 5, 7],
+  6: [0, 4, 7, 9],
+  m6: [0, 3, 7, 9],
+  7: [0, 4, 7, 10],
+  maj7: [0, 4, 7, 11],
+  m7: [0, 3, 7, 10],
+  min7: [0, 3, 7, 10],
+  9: [0, 4, 7, 10, 14],
+  maj9: [0, 4, 7, 11, 14],
+  m9: [0, 3, 7, 10, 14],
+  min9: [0, 3, 7, 10, 14],
+};
+
+// Parses a chord symbol — root, optional #/b, optional quality suffix (m,
+// 7, maj7, m7, m9, dim, aug, sus2/4, 6/m6, 9/maj9/m9...) — into its
+// semitones, voiced in whichever octave keeps the root closest to C4.
+// Doesn't handle slash chords or alterations (b5, #9, etc.); good enough
 // for "type the chords from a lyrics-and-chords page" without becoming a
 // full music-notation parser.
 function parseChordToken(token) {
-  const match = /^([A-Ga-g])([#b]?)(m|min)?$/.exec(token.trim());
+  const match = /^([A-Ga-g])([#b]?)(.*)$/.exec(token.trim());
   if (!match) return null;
-  const [, letter, accidental, minorFlag] = match;
+  const [, letter, accidental, qualityRaw] = match;
+  const intervals = CHORD_QUALITY_INTERVALS[qualityRaw.toLowerCase()];
+  if (!intervals) return null;
   let root = CHORD_ROOT_SEMITONES[letter.toUpperCase()];
   if (accidental === '#') root += 1;
   if (accidental === 'b') root -= 1;
   while (root > 6) root -= 12;
   while (root < -6) root += 12;
-  const third = minorFlag ? root + 3 : root + 4;
-  return [root, third, root + 7];
+  return intervals.map((interval) => {
+    let note = root + interval;
+    while (note > 12) note -= 12;
+    while (note < -12) note += 12;
+    return note;
+  });
 }
 
 // Deals 3 distinct random songs — mirrors MicDrop's existing
@@ -110,14 +162,28 @@ function drawSongOptions() {
 }
 
 function emptyDrumPattern() {
-  return {
-    kick: Array(STEPS_PER_LOOP).fill(false),
-    snare: Array(STEPS_PER_LOOP).fill(false),
-    hihat: Array(STEPS_PER_LOOP).fill(false),
-  };
+  return Object.fromEntries(DRUM_ROWS.map((row) => [row.id, Array(STEPS_PER_LOOP).fill(false)]));
 }
 
 const RECORD_LIMIT_MS = 45_000;
+
+// A DAW-style bar ruler — lines up with the grid's columns (same label-width
+// spacer, same per-step width) so it reads as a timeline sitting above the
+// track, not a separate unrelated row of numbers.
+function BarRuler() {
+  return (
+    <div className="bar-ruler">
+      <span className="bar-ruler-spacer" />
+      <div className="bar-ruler-marks">
+        {Array.from({ length: CHORD_SLOT_COUNT }).map((_, i) => (
+          <span className="bar-ruler-mark" key={i}>
+            {i + 1}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // One piano-roll track (used for both Melody and Bass). Click a cell to
 // place a 1-step note; press-drag across cells to make it longer; click an
@@ -125,19 +191,20 @@ const RECORD_LIMIT_MS = 45_000;
 // and bass each track their own gesture independently.
 function PianoRoll({
   title,
+  accent,
+  simple,
   chromaticRange,
   scaleSteps,
   keyMode,
   onKeyModeChange,
   instrument,
   onInstrumentChange,
+  instrumentOptions,
   pianoStatus,
   pattern,
   onChangeRow,
   activeStep,
   onPreview,
-  chordPalette,
-  onStampChord,
   onStampProgression,
   chordInsertStep,
   onChordInsertStepChange,
@@ -215,59 +282,54 @@ function PianoRoll({
 
   return (
     <>
-      <h3 className="track-label">{title}</h3>
-      <div className="row">
-        <div className="segmented">
-          <button className={keyMode === 'chromatic' ? 'active' : ''} onClick={() => onKeyModeChange('chromatic')}>
-            Chromatic (raw)
-          </button>
-          <button className={keyMode === 'scale' ? 'active' : ''} onClick={() => onKeyModeChange('scale')}>
-            Snapped to key (easy)
-          </button>
-        </div>
-      </div>
-      <div className="row">
-        <div className="segmented">
-          {INSTRUMENT_OPTIONS.map((opt) => (
-            <button key={opt.id} className={instrument === opt.id ? 'active' : ''} onClick={() => onInstrumentChange(opt.id)}>
-              {opt.label}
-              {opt.id === 'PIANO' && pianoStatus !== 'ready' ? ` (${pianoStatus === 'error' ? 'unavailable' : 'loading…'})` : ''}
+      <h3 className={`track-label track-label-${accent}`}>
+        <span className="track-swatch" />
+        {title}
+      </h3>
+      {!simple && (
+        <div className="row">
+          <div className="segmented">
+            <button className={keyMode === 'chromatic' ? 'active' : ''} onClick={() => onKeyModeChange('chromatic')}>
+              Chromatic (raw)
             </button>
-          ))}
+            <button className={keyMode === 'scale' ? 'active' : ''} onClick={() => onKeyModeChange('scale')}>
+              Snapped to key (easy)
+            </button>
+          </div>
         </div>
-      </div>
-      {chordPalette && (
-        <>
-          <div className="row">
-            <span className="muted chord-label">Insert at:</span>
-            <div className="segmented insert-slots">
-              <button className={chordInsertStep === null ? 'active' : ''} onClick={() => onChordInsertStepChange(null)}>
-                Auto
-              </button>
-              {Array.from({ length: CHORD_SLOT_COUNT }).map((_, i) => (
-                <button
-                  key={i}
-                  className={chordInsertStep === i * CHORD_LENGTH ? 'active' : ''}
-                  onClick={() => onChordInsertStepChange(i * CHORD_LENGTH)}
-                >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="row">
-            <span className="muted chord-label">Chords:</span>
-            <div className="segmented">
-              {chordPalette.map((chord) => (
-                <button key={chord.label} onClick={() => onStampChord(chord.semitones)}>
-                  {chord.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
       )}
-      {onStampProgression && (
+      {!simple && (
+        <div className="row">
+          <div className="segmented">
+            {instrumentOptions.map((opt) => (
+              <button key={opt.id} className={instrument === opt.id ? 'active' : ''} onClick={() => onInstrumentChange(opt.id)}>
+                {opt.label}
+                {opt.id === 'PIANO' && pianoStatus !== 'ready' ? ` (${pianoStatus === 'error' ? 'unavailable' : 'loading…'})` : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {!simple && onStampProgression && (
+        <div className="row">
+          <span className="muted chord-label">Insert at:</span>
+          <div className="segmented insert-slots">
+            <button className={chordInsertStep === null ? 'active' : ''} onClick={() => onChordInsertStepChange(null)}>
+              Auto
+            </button>
+            {Array.from({ length: CHORD_SLOT_COUNT }).map((_, i) => (
+              <button
+                key={i}
+                className={chordInsertStep === i * CHORD_LENGTH ? 'active' : ''}
+                onClick={() => onChordInsertStepChange(i * CHORD_LENGTH)}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {!simple && onStampProgression && (
         <div className="row">
           <form className="chord-form" onSubmit={handleProgressionSubmit}>
             <input
@@ -285,7 +347,8 @@ function PianoRoll({
         </div>
       )}
       <p className="muted">Tap a label to preview a pitch. Tap a cell to place a note, drag to make it longer, tap it again to remove.</p>
-      <div className="piano-roll">
+      <BarRuler />
+      <div className={`piano-roll piano-roll-${accent}`}>
         {rows.map(({ semitone, index }) => {
           const notes = pattern[index] || [];
           const preview = dragPreview && dragPreview.rowIndex === index ? dragPreview : null;
@@ -320,10 +383,149 @@ function PianoRoll({
   );
 }
 
+// A real-time playable keyboard — the alternative to PianoRoll's click-to-
+// place grid, for anyone who'd rather just noodle on a virtual piano than
+// program a grid. Notes here don't touch the grid at all; they play live
+// (through the same output the loop and Record both use) and hold/sustain
+// while pressed, same as a real keyboard.
+function LivePiano({ accent, simple, chromaticRange, scaleSteps, keyMode, onKeyModeChange, instrument, onInstrumentChange, instrumentOptions, pianoStatus, onNoteOn, onNoteOff }) {
+  const [heldKeys, setHeldKeys] = useState(() => new Set());
+  const stepsList = keyMode === 'scale' ? scaleSteps : chromaticRange.steps;
+  const keyBindings = keyMode === 'scale' ? SCALE_KEY_BINDINGS : CHROMATIC_KEY_BINDINGS;
+  const keyToSemitone = keyMode === 'scale' ? SCALE_KEY_TO_SEMITONE : CHROMATIC_KEY_TO_SEMITONE;
+
+  function idFor(semitone) {
+    return `k${stepsList.indexOf(semitone)}`;
+  }
+
+  function startNote(semitone) {
+    const id = idFor(semitone);
+    if (heldKeys.has(id)) return;
+    onNoteOn(id, semitone, instrument);
+    setHeldKeys((prev) => new Set(prev).add(id));
+  }
+
+  function endNote(semitone) {
+    const id = idFor(semitone);
+    onNoteOff(id);
+    setHeldKeys((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  // Safety net: releases every held key on a global pointerup/cancel so a
+  // drag-off (or switching away from Live Piano mid-press) can't leave a
+  // note stuck sustaining forever.
+  useEffect(() => {
+    function releaseAll() {
+      setHeldKeys((prev) => {
+        if (prev.size === 0) return prev;
+        prev.forEach((id) => onNoteOff(id));
+        return new Set();
+      });
+    }
+    window.addEventListener('pointerup', releaseAll);
+    window.addEventListener('pointercancel', releaseAll);
+    return () => {
+      window.removeEventListener('pointerup', releaseAll);
+      window.removeEventListener('pointercancel', releaseAll);
+    };
+  }, [onNoteOff]);
+
+  // Physical-keyboard input. Tracks held keys so OS key-repeat doesn't
+  // retrigger, and only binds the middle octave (see CHROMATIC_KEY_BINDINGS).
+  useEffect(() => {
+    const held = new Set();
+    function handleKeyDown(e) {
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      const key = e.key.toLowerCase();
+      if (held.has(key)) return;
+      const semitone = keyToSemitone[key];
+      if (semitone === undefined) return;
+      held.add(key);
+      startNote(semitone);
+    }
+    function handleKeyUp(e) {
+      const key = e.key.toLowerCase();
+      if (!held.has(key)) return;
+      held.delete(key);
+      const semitone = keyToSemitone[key];
+      if (semitone !== undefined) endNote(semitone);
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyMode, instrument]);
+
+  return (
+    <>
+      {!simple && (
+        <div className="row">
+          <div className="segmented">
+            <button className={keyMode === 'chromatic' ? 'active' : ''} onClick={() => onKeyModeChange('chromatic')}>
+              Chromatic (raw)
+            </button>
+            <button className={keyMode === 'scale' ? 'active' : ''} onClick={() => onKeyModeChange('scale')}>
+              Snapped to key (easy)
+            </button>
+          </div>
+        </div>
+      )}
+      {!simple && (
+        <div className="row">
+          <div className="segmented">
+            {instrumentOptions.map((opt) => (
+              <button key={opt.id} className={instrument === opt.id ? 'active' : ''} onClick={() => onInstrumentChange(opt.id)}>
+                {opt.label}
+                {opt.id === 'PIANO' && pianoStatus !== 'ready' ? ` (${pianoStatus === 'error' ? 'unavailable' : 'loading…'})` : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="muted">
+        Press and hold to sustain a note — click/tap, or play with your computer keyboard: <code>a s d f g h j k</code>{' '}
+        (+ <code>w e t y u</code> for sharps in chromatic mode).
+      </p>
+      <div className={`live-keyboard live-keyboard-${keyMode} live-keyboard-${accent}`}>
+        {stepsList.map((semitone, i) => {
+          const id = idFor(semitone);
+          const isBlack = keyMode === 'chromatic' && chromaticRange.isBlack[i];
+          return (
+            <button
+              key={semitone}
+              className={`live-key ${isBlack ? 'live-key-black' : 'live-key-white'} ${heldKeys.has(id) ? 'live-key-pressed' : ''}`}
+              onPointerDown={() => startNote(semitone)}
+              onPointerUp={() => endNote(semitone)}
+              onPointerLeave={() => endNote(semitone)}
+            >
+              {keyMode === 'scale' ? SCALE_DEGREE_LABELS[i] : noteName(semitone)}
+              {keyBindings[semitone] !== undefined && <span className="live-key-hint">{keyBindings[semitone]}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 export default function ComposerPrototype() {
   const engineRef = useRef(null);
   const [songChoices, setSongChoices] = useState(drawSongOptions);
   const [chosenSong, setChosenSong] = useState(null);
+  // 'simple' hides the secondary controls (key-mode switch, instrument
+  // picker, chord tools, extra drum sounds) so the playing surface itself
+  // isn't buried under options — defaults on since that's the more
+  // approachable first impression for anyone not already comfortable with
+  // DAW-style tools.
+  const [uiMode, setUiMode] = useState('simple'); // 'simple' | 'advanced'
   const [bpm, setBpm] = useState(100);
   const [loopPlaying, setLoopPlaying] = useState(false);
   const [activeStep, setActiveStep] = useState(-1);
@@ -334,6 +536,7 @@ export default function ComposerPrototype() {
     drumPatternRef.current = drumPattern;
   }, [drumPattern]);
 
+  const [melodyMode, setMelodyMode] = useState('roll'); // 'roll' | 'live'
   const [melodyKeyMode, setMelodyKeyMode] = useState('chromatic');
   const [melodyInstrument, setMelodyInstrument] = useState(DEFAULT_INSTRUMENT);
   const [melodyPattern, setMelodyPattern] = useState({});
@@ -343,7 +546,7 @@ export default function ComposerPrototype() {
   const [chordInsertStep, setChordInsertStep] = useState(null);
 
   const [bassKeyMode, setBassKeyMode] = useState('chromatic');
-  const [bassInstrument, setBassInstrument] = useState(DEFAULT_INSTRUMENT);
+  const [bassInstrument, setBassInstrument] = useState(DEFAULT_BASS_INSTRUMENT);
   const [bassPattern, setBassPattern] = useState({});
   useEffect(() => setBassPattern({}), [bassKeyMode]);
 
@@ -383,6 +586,7 @@ export default function ComposerPrototype() {
       .then(() => setPianoStatus('ready'))
       .catch(() => setPianoStatus('error'));
     return () => {
+      engineRef.current?.stopAllNotes();
       engineRef.current?.stopLoop();
     };
   }, []);
@@ -433,16 +637,6 @@ export default function ComposerPrototype() {
       next[rowIndex] = placeNote(next[rowIndex] || [], start, CHORD_LENGTH);
     });
     return next;
-  }
-
-  function stampChord(semitones) {
-    const stepsList = melodyKeyMode === 'scale' ? MELODY_SCALE_STEPS : MELODY_CHROMATIC.steps;
-    setMelodyPattern((prev) => stampSemitones(prev, semitones, stepsList, chordInsertStep ?? undefined) ?? prev);
-    // Auto-advance the insertion point so consecutive chord clicks build a
-    // left-to-right progression, while still leaving it player-controlled.
-    if (chordInsertStep !== null) {
-      setChordInsertStep(Math.min(chordInsertStep + CHORD_LENGTH, STEPS_PER_LOOP - CHORD_LENGTH));
-    }
   }
 
   // Parses a typed chord progression ("C F G Am") and stamps each chord in
@@ -539,47 +733,95 @@ export default function ComposerPrototype() {
       </section>
 
       <section className="panel">
-        <h2>Tracks</h2>
+        <div className="row tracks-header">
+          <h2 className="tracks-heading">Tracks</h2>
+          <div className="segmented">
+            <button className={uiMode === 'simple' ? 'active' : ''} onClick={() => setUiMode('simple')}>
+              Simple
+            </button>
+            <button className={uiMode === 'advanced' ? 'active' : ''} onClick={() => setUiMode('advanced')}>
+              Advanced
+            </button>
+          </div>
+        </div>
         <p className="muted">Click cells to place notes and drum hits on the grid — no live performance needed.</p>
-        <div className="row">
-          <button className={`btn ${loopPlaying ? 'btn-active' : ''}`} onClick={toggleLoop}>
-            {loopPlaying ? 'Stop' : 'Play'}
+        <div className="transport">
+          <button className={`btn btn-transport ${loopPlaying ? 'btn-active' : ''}`} onClick={toggleLoop}>
+            {loopPlaying ? '■ Stop' : '▶ Play'}
           </button>
           <label className="toggle">
             BPM
             <input type="range" min="70" max="150" value={bpm} onChange={(e) => setBpm(Number(e.target.value))} />
-            <span className="muted">{bpm}</span>
+            <span className="bpm-readout">{bpm}</span>
           </label>
         </div>
 
-        <PianoRoll
-          title="Melody"
-          chromaticRange={MELODY_CHROMATIC}
-          scaleSteps={MELODY_SCALE_STEPS}
-          keyMode={melodyKeyMode}
-          onKeyModeChange={setMelodyKeyMode}
-          instrument={melodyInstrument}
-          onInstrumentChange={setMelodyInstrument}
-          pianoStatus={pianoStatus}
-          pattern={melodyPattern}
-          onChangeRow={(rowIndex, notes) => setMelodyPattern((prev) => ({ ...prev, [rowIndex]: notes }))}
-          activeStep={activeStep}
-          onPreview={(semitone) => engineRef.current?.previewNote(semitone, melodyInstrument)}
-          chordPalette={CHORD_PALETTE}
-          onStampChord={stampChord}
-          onStampProgression={stampProgression}
-          chordInsertStep={chordInsertStep}
-          onChordInsertStepChange={setChordInsertStep}
-        />
+        <div className="row">
+          <div className="segmented">
+            <button className={melodyMode === 'roll' ? 'active' : ''} onClick={() => setMelodyMode('roll')}>
+              Piano Roll
+            </button>
+            <button className={melodyMode === 'live' ? 'active' : ''} onClick={() => setMelodyMode('live')}>
+              Live Piano
+            </button>
+          </div>
+        </div>
+
+        {melodyMode === 'roll' ? (
+          <PianoRoll
+            title="Melody"
+            accent="melody"
+            simple={uiMode === 'simple'}
+            chromaticRange={MELODY_CHROMATIC}
+            scaleSteps={MELODY_SCALE_STEPS}
+            keyMode={melodyKeyMode}
+            onKeyModeChange={setMelodyKeyMode}
+            instrument={melodyInstrument}
+            onInstrumentChange={setMelodyInstrument}
+            instrumentOptions={MELODY_INSTRUMENT_OPTIONS}
+            pianoStatus={pianoStatus}
+            pattern={melodyPattern}
+            onChangeRow={(rowIndex, notes) => setMelodyPattern((prev) => ({ ...prev, [rowIndex]: notes }))}
+            activeStep={activeStep}
+            onPreview={(semitone) => engineRef.current?.previewNote(semitone, melodyInstrument)}
+            onStampProgression={stampProgression}
+            chordInsertStep={chordInsertStep}
+            onChordInsertStepChange={setChordInsertStep}
+          />
+        ) : (
+          <>
+            <h3 className="track-label track-label-melody">
+              <span className="track-swatch" />
+              Melody — Live Piano
+            </h3>
+            <LivePiano
+              accent="melody"
+              simple={uiMode === 'simple'}
+              chromaticRange={MELODY_CHROMATIC}
+              scaleSteps={MELODY_SCALE_STEPS}
+              keyMode={melodyKeyMode}
+              onKeyModeChange={setMelodyKeyMode}
+              instrument={melodyInstrument}
+              onInstrumentChange={setMelodyInstrument}
+              instrumentOptions={MELODY_INSTRUMENT_OPTIONS}
+              pianoStatus={pianoStatus}
+              onNoteOn={(id, semitone, instrumentId) => engineRef.current?.noteOn(id, semitone, instrumentId)}
+              onNoteOff={(id) => engineRef.current?.noteOff(id)}
+            />
+          </>
+        )}
 
         <PianoRoll
           title="Bass"
+          accent="bass"
+          simple={uiMode === 'simple'}
           chromaticRange={BASS_CHROMATIC}
           scaleSteps={BASS_SCALE_STEPS}
           keyMode={bassKeyMode}
           onKeyModeChange={setBassKeyMode}
           instrument={bassInstrument}
           onInstrumentChange={setBassInstrument}
+          instrumentOptions={BASS_INSTRUMENT_OPTIONS}
           pianoStatus={pianoStatus}
           pattern={bassPattern}
           onChangeRow={(rowIndex, notes) => setBassPattern((prev) => ({ ...prev, [rowIndex]: notes }))}
@@ -587,9 +829,13 @@ export default function ComposerPrototype() {
           onPreview={(semitone) => engineRef.current?.previewNote(semitone, bassInstrument)}
         />
 
-        <h3 className="track-label">Drums</h3>
-        <div className="drum-grid">
-          {DRUM_ROWS.map((row) => (
+        <h3 className="track-label track-label-drums">
+          <span className="track-swatch" />
+          Drums
+        </h3>
+        <BarRuler />
+        <div className="drum-grid drum-grid-drums">
+          {(uiMode === 'simple' ? DRUM_ROWS.filter((row) => SIMPLE_DRUM_ROW_IDS.has(row.id)) : DRUM_ROWS).map((row) => (
             <div className="drum-row" key={row.id}>
               <span className="drum-row-label">{row.label}</span>
               <div className="drum-row-steps">
