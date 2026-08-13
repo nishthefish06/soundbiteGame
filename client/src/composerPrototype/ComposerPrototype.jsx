@@ -21,10 +21,13 @@ function noteName(semitone) {
   return semitone % 12 === 0 ? `${name}${4 + semitone / 12}` : name;
 }
 
-// Both tracks' scale-snapped ranges span exactly 2 octaves (15 degrees), so
-// one label set works for either — it's positional (1st degree, 2nd
-// degree...), not tied to an absolute pitch.
-const SCALE_DEGREE_LABELS = ['1', '2', '3', '4', '5', '6', '7', '1', '2', '3', '4', '5', '6', '7', '8'];
+// Scale-degree label for a row at `index` within a scale-snapped range of
+// `total` rows — cycles 1-7 per octave, with the very last row (the top
+// root) always labeled 8. Computed rather than a fixed-length array so it
+// stays correct regardless of how wide the melody/bass ranges are.
+function scaleDegreeLabel(index, total) {
+  return index === total - 1 ? '8' : String((index % 7) + 1);
+}
 
 const DRUM_ROWS = [
   { id: 'kick', label: 'Kick' },
@@ -356,7 +359,7 @@ function PianoRoll({
           return (
             <div className={`piano-roll-row ${isBlack ? 'piano-roll-row-black' : ''}`} key={index}>
               <button className="piano-roll-label" onClick={() => onPreview(semitone)}>
-                {keyMode === 'scale' ? SCALE_DEGREE_LABELS[index] : noteName(semitone)}
+                {keyMode === 'scale' ? scaleDegreeLabel(index, stepsList.length) : noteName(semitone)}
               </button>
               <div className="piano-roll-steps">
                 {Array.from({ length: STEPS_PER_LOOP }).map((_, step) => {
@@ -388,11 +391,28 @@ function PianoRoll({
 // program a grid. Notes here don't touch the grid at all; they play live
 // (through the same output the loop and Record both use) and hold/sustain
 // while pressed, same as a real keyboard.
+// Live Piano shows a single *octave window* onto the (now 3-octave) range
+// rather than all of it at once — unlike the piano roll, you're playing
+// this in real time, so needing to scroll mid-performance to reach a note
+// is a real usability problem, not just a minor inconvenience. Windows are
+// snapped to real octave boundaries (13 keys chromatic / 8 scale degrees,
+// each root-to-root) so Low/Mid/High behaves like a real keyboard's octave
+// shift button rather than an arbitrary slice.
 function LivePiano({ accent, simple, chromaticRange, scaleSteps, keyMode, onKeyModeChange, instrument, onInstrumentChange, instrumentOptions, pianoStatus, onNoteOn, onNoteOff }) {
   const [heldKeys, setHeldKeys] = useState(() => new Set());
+  const [windowPos, setWindowPos] = useState('mid'); // 'low' | 'mid' | 'high'
   const stepsList = keyMode === 'scale' ? scaleSteps : chromaticRange.steps;
   const keyBindings = keyMode === 'scale' ? SCALE_KEY_BINDINGS : CHROMATIC_KEY_BINDINGS;
   const keyToSemitone = keyMode === 'scale' ? SCALE_KEY_TO_SEMITONE : CHROMATIC_KEY_TO_SEMITONE;
+
+  const octaveLen = keyMode === 'scale' ? 7 : 12;
+  const windowSize = Math.min(octaveLen + 1, stepsList.length);
+  const maxWindowStart = Math.max(0, stepsList.length - windowSize);
+  const midWindowStart = Math.round(maxWindowStart / 2 / octaveLen) * octaveLen;
+  const windowStart = windowPos === 'low' ? 0 : windowPos === 'high' ? maxWindowStart : midWindowStart;
+  const visibleKeys = stepsList
+    .map((semitone, i) => ({ semitone, i }))
+    .slice(windowStart, windowStart + windowSize);
 
   function idFor(semitone) {
     return `k${stepsList.indexOf(semitone)}`;
@@ -494,8 +514,24 @@ function LivePiano({ accent, simple, chromaticRange, scaleSteps, keyMode, onKeyM
         Press and hold to sustain a note — click/tap, or play with your computer keyboard: <code>a s d f g h j k</code>{' '}
         (+ <code>w e t y u</code> for sharps in chromatic mode).
       </p>
+      {maxWindowStart > 0 && (
+        <div className="row">
+          <span className="muted chord-label">Octave:</span>
+          <div className="segmented">
+            <button className={windowPos === 'low' ? 'active' : ''} onClick={() => setWindowPos('low')}>
+              Low
+            </button>
+            <button className={windowPos === 'mid' ? 'active' : ''} onClick={() => setWindowPos('mid')}>
+              Mid
+            </button>
+            <button className={windowPos === 'high' ? 'active' : ''} onClick={() => setWindowPos('high')}>
+              High
+            </button>
+          </div>
+        </div>
+      )}
       <div className={`live-keyboard live-keyboard-${keyMode} live-keyboard-${accent}`}>
-        {stepsList.map((semitone, i) => {
+        {visibleKeys.map(({ semitone, i }) => {
           const id = idFor(semitone);
           const isBlack = keyMode === 'chromatic' && chromaticRange.isBlack[i];
           return (
@@ -506,7 +542,7 @@ function LivePiano({ accent, simple, chromaticRange, scaleSteps, keyMode, onKeyM
               onPointerUp={() => endNote(semitone)}
               onPointerLeave={() => endNote(semitone)}
             >
-              {keyMode === 'scale' ? SCALE_DEGREE_LABELS[i] : noteName(semitone)}
+              {keyMode === 'scale' ? scaleDegreeLabel(i, stepsList.length) : noteName(semitone)}
               {keyBindings[semitone] !== undefined && <span className="live-key-hint">{keyBindings[semitone]}</span>}
             </button>
           );

@@ -35,13 +35,16 @@ function buildScaleRange(low, high) {
   return steps;
 }
 
-// Melody: 2 octaves centered on C4 (C3-C5). Bass: 2 octaves below that
-// (C1-C3) — a distinct, lower default register, since it's a separate track
-// now rather than just "the keyboard shifted down."
-export const MELODY_CHROMATIC = buildChromaticRange(-12, 12);
-export const MELODY_SCALE_STEPS = buildScaleRange(-12, 12);
-export const BASS_CHROMATIC = buildChromaticRange(-36, -12);
-export const BASS_SCALE_STEPS = buildScaleRange(-36, -12);
+// Melody: 3 octaves, C3-C6 — extended a full octave upward from the
+// original C3-C5, chosen specifically to land exactly on the C6 piano
+// sample anchor (see PIANO_SAMPLE_ANCHOR_SEMITONES below) so the extra
+// headroom doesn't cost any pitch-shift quality on Grand Piano. Bass: 3
+// octaves, C0-C3 — extended a full octave downward for real sub-bass depth
+// (bass instruments are all synths, no sample-anchor quality concern).
+export const MELODY_CHROMATIC = buildChromaticRange(-12, 24);
+export const MELODY_SCALE_STEPS = buildScaleRange(-12, 24);
+export const BASS_CHROMATIC = buildChromaticRange(-48, -12);
+export const BASS_SCALE_STEPS = buildScaleRange(-48, -12);
 
 function semitoneToFreq(semitone) {
   return C4_FREQ * 2 ** (semitone / 12);
