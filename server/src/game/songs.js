@@ -126,10 +126,50 @@ const WELL_KNOWN_INDIE = [
   s('Somebody That I Used to Know', 'Gotye'),
 ];
 
+// TV/movie theme songs — mostly instrumental, which is a natural fit for
+// this mode since there's no vocal melody to worry about recreating, just
+// the theme itself. Picked for maximum recognizability of the theme even
+// where the composer's name itself might be a tougher artist-guess.
+const THEME_SONGS = [
+  s('I’ll Be There for You', 'The Rembrandts'),
+  s('Where Everybody Knows Your Name', 'Gary Portnoy')
+  s('Fresh Prince of Bel-Air', 'Will Smith'),
+  s('The Simpsons Theme', 'Danny Elfman'),
+  s('Star Wars Main Theme', 'John Williams'),
+  s('Jaws Theme', 'John Williams'),
+  s('Jurassic Park Theme', 'John Williams'),
+  s('Raiders March', 'John Williams'),
+  s('Mission Impossible Theme', 'Lalo Schifrin'),
+  s('He’s a Pirate', 'Hans Zimmer'),
+  s('Game of Thrones Theme', 'Ramin Djawadi'),
+  s('Stranger Things Theme', 'Kyle Dixon & Michael Stein'),
+  s('Gonna Fly Now', 'Bill Conti'),
+  s('James Bond Theme', 'John Barry'),
+  s('Halloween Theme', 'John Carpenter'),
+  s('The Pink Panther Theme', 'Henry Mancini'),
+];
+
+// Video game music — kept to only the handful with real mainstream
+// crossover (not just fame within gaming culture), per the lesson learned
+// from indie/hip-hop picks earlier: genre-canon iconic isn't the same bar
+// as broadly recognizable. Flagged for a recognizability check.
+const VIDEO_GAME_THEMES = [
+  s('Super Mario Bros. Theme', 'Koji Kondo'),
+  s('The Legend of Zelda Theme', 'Koji Kondo'),
+  s('Tetris Theme', 'Hirokazu Tanaka'),
+  s('Pokémon Theme', 'Jason Paige'),
+  s('Sweden', 'C418'),
+  s('Megalovania', 'Toby Fox'),
+  s('Still Alive', 'Jonathan Coulton'),
+  s('Halo Theme', 'Martin O’Donnell'),
+];
+
 export const SONGS = [
   ...CLASSIC_ROCK_AND_POP,
   ...CLASSIC_HIP_HOP_AND_RNB,
   ...POP_2017_2025,
   ...HIP_HOP_AND_RNB_2017_2025,
   ...WELL_KNOWN_INDIE,
+  ...THEME_SONGS,
+  ...VIDEO_GAME_THEMES,
 ];
