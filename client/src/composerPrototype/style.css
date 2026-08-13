@@ -1,5 +1,31 @@
-/* Standalone styling for the composer prototype — deliberately not sharing
-   client/src/index.css so this can't collide with in-progress game styling. */
+/* Styling for the composer prototype, matching Soundbite's actual visual
+   language (tokens copied 1:1 from client/src/index.css) rather than a
+   generic dark-mode look. Still a standalone page for now — literal CSS
+   *scoping* (prefixing every selector so it can't leak once embedded
+   alongside index.css) is deferred to the actual Room.js integration step,
+   where it can be tested against the real stylesheet instead of guessed at
+   here in isolation. */
+
+:root {
+  --bg: #141c5e;
+  --bg-alt: #1a2478;
+  --surface: #212e94;
+  --surface-hover: #2a3aad;
+  --ink: #0c0f2e;
+  --border: #3a4bc0;
+  --text: #fff9f0;
+  --text-muted: #c3b8ec;
+  --primary: #ff3d81;
+  --secondary: #29d6c8;
+  --accent: #ffd23f;
+  --success: #6fd15a;
+  --danger: #ff5252;
+  --radius-lg: 22px;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --font-display: 'Luckiest Guy', cursive;
+  --font-body: 'Baloo 2', ui-rounded, system-ui, sans-serif;
+}
 
 * {
   box-sizing: border-box;
@@ -7,9 +33,13 @@
 
 body {
   margin: 0;
-  background: #17171c;
-  color: #f0eee8;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--bg-alt) 2.5px, transparent 2.5px);
+  background-size: 26px 26px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
 }
 
 .proto-shell {
@@ -19,14 +49,22 @@ body {
 }
 
 h1 {
-  font-size: 1.4rem;
-  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.8rem;
+  letter-spacing: 0.01em;
+  text-shadow: 3px 3px 0 var(--ink);
+  margin: 0 0 8px;
 }
 
 h2 {
-  font-size: 1rem;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.2rem;
+  letter-spacing: 0.01em;
+  text-shadow: 2px 2px 0 var(--ink);
+  color: var(--accent);
   margin: 0 0 12px;
-  color: #cfcac0;
 }
 
 .tracks-header {
@@ -38,17 +76,18 @@ h2 {
 }
 
 .muted {
-  color: #9a958c;
+  color: var(--text-muted);
   font-size: 0.85rem;
   line-height: 1.4;
 }
 
 .panel {
-  background: #1f1f27;
-  border: 1px solid #2c2c36;
-  border-radius: 12px;
-  padding: 16px;
+  background: var(--surface);
+  border: 3px solid var(--ink);
+  border-radius: var(--radius-lg);
+  padding: 1.1rem 1.25rem;
   margin-top: 16px;
+  box-shadow: 6px 6px 0 var(--ink);
 }
 
 .row {
@@ -60,25 +99,41 @@ h2 {
 }
 
 .btn {
-  background: #3a3a48;
-  color: #f0eee8;
-  border: none;
-  border-radius: 8px;
-  padding: 10px 16px;
-  font-size: 0.95rem;
+  background: var(--surface-hover);
+  color: var(--text);
+  border: 3px solid var(--ink);
+  border-radius: var(--radius);
+  padding: 0.6rem 1.2rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   cursor: pointer;
+  box-shadow: 4px 4px 0 var(--ink);
+  transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.12s ease, background 0.15s ease;
 }
 
 .btn:hover {
-  background: #46465a;
+  background: var(--secondary);
+  color: var(--ink);
+  transform: translate(-1px, -2px) rotate(-1deg);
+  box-shadow: 5px 6px 0 var(--ink);
+}
+
+.btn:active {
+  transform: translate(3px, 3px) rotate(0deg);
+  box-shadow: 0 0 0 var(--ink);
 }
 
 .btn-active {
-  background: #d9534f;
+  background: var(--danger);
+  color: var(--ink);
 }
 
 .btn-record {
-  background: #c0392b;
+  background: var(--danger);
+  color: var(--ink);
 }
 
 .toggle {
@@ -86,27 +141,37 @@ h2 {
   align-items: center;
   gap: 6px;
   font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .segmented {
   display: flex;
-  border: 1px solid #3a3a48;
-  border-radius: 8px;
+  border: 3px solid var(--ink);
+  border-radius: var(--radius);
   overflow: hidden;
+  background: var(--bg-alt);
 }
 
 .segmented button {
   background: transparent;
-  color: #cfcac0;
+  color: var(--text-muted);
   border: none;
-  padding: 8px 12px;
+  padding: 0.5rem 0.9rem;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.segmented button:hover {
+  color: var(--text);
 }
 
 .segmented button.active {
-  background: #6c63ff;
-  color: white;
+  background: var(--secondary);
+  color: var(--ink);
 }
 
 .drum-grid {
@@ -114,9 +179,10 @@ h2 {
   flex-direction: column;
   gap: 6px;
   overflow-x: auto;
-  border: 1px solid #2c2c36;
-  border-radius: 8px;
-  padding: 4px 0;
+  border: 3px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--bg-alt);
+  padding: 6px 0;
 }
 
 .drum-row {
@@ -128,12 +194,13 @@ h2 {
 .drum-row-label {
   width: 52px;
   flex-shrink: 0;
-  font-size: 0.85rem;
-  color: #cfcac0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
   position: sticky;
   left: 0;
-  background: #1f1f27;
-  padding-left: 2px;
+  background: var(--bg-alt);
+  padding-left: 4px;
 }
 
 .drum-row-steps {
@@ -147,37 +214,39 @@ h2 {
   flex-shrink: 0;
   height: 26px;
   border-radius: 4px;
-  background: #2c2c36;
+  background: var(--surface);
   border: none;
   cursor: pointer;
 }
 
 .drum-step:hover {
-  background: #3a3a48;
+  background: var(--surface-hover);
 }
 
 .drum-step-beat {
-  background: #33333f;
+  background: var(--surface-hover);
 }
 
 .drum-step-on {
-  background: #6c63ff;
+  background: var(--accent);
 }
 
 .drum-step-on:hover {
-  background: #8079ff;
+  background: #ffdc6b;
 }
 
 .drum-step-playhead {
-  outline: 2px solid #f0eee8;
+  outline: 2px solid var(--text);
   outline-offset: -2px;
 }
 
 code {
-  background: #2c2c36;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 1px 5px;
+  padding: 1px 6px;
   font-size: 0.85em;
+  color: var(--accent);
 }
 
 .transport {
@@ -185,21 +254,21 @@ code {
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  background: #17171c;
-  border: 1px solid #2c2c36;
-  border-radius: 8px;
+  background: var(--bg-alt);
+  border: 3px solid var(--ink);
+  border-radius: var(--radius);
   padding: 10px 14px;
   margin-bottom: 4px;
 }
 
 .btn-transport {
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  min-width: 76px;
+  min-width: 84px;
 }
 
 .bpm-readout {
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  color: #cfcac0;
+  color: var(--text);
+  font-weight: 700;
   min-width: 2ch;
 }
 
@@ -208,30 +277,33 @@ code {
   align-items: center;
   gap: 7px;
   font-size: 0.8rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 20px 0 10px;
 }
 
 .track-swatch {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 2px;
   background: currentColor;
   flex-shrink: 0;
+  box-shadow: 1px 1px 0 var(--ink);
 }
 
+/* Same three-color set as the game's own sticker/accent palette, so these
+   tracks read as belonging to the same app rather than a bespoke scheme. */
 .track-label-melody {
-  color: #8079ff;
+  color: var(--primary);
 }
 
 .track-label-bass {
-  color: #4fd1c5;
+  color: var(--secondary);
 }
 
 .track-label-drums {
-  color: #f0a868;
+  color: var(--accent);
 }
 
 .bar-ruler {
@@ -253,8 +325,8 @@ code {
   flex-shrink: 0;
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 0.65rem;
-  color: #6c6a72;
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  border-left: 1px solid var(--border);
   padding-left: 4px;
 }
 
@@ -264,21 +336,22 @@ code {
   max-height: 380px;
   overflow-y: auto;
   overflow-x: auto;
-  border: 1px solid #2c2c36;
-  border-left-width: 3px;
-  border-radius: 8px;
+  border: 3px solid var(--ink);
+  border-left-width: 5px;
+  border-radius: var(--radius);
+  background: var(--bg-alt);
 }
 
 .piano-roll-melody {
-  border-left-color: #6c63ff;
+  border-left-color: var(--primary);
 }
 
 .piano-roll-bass {
-  border-left-color: #38b2ac;
+  border-left-color: var(--secondary);
 }
 
 .drum-grid-drums {
-  border-left: 3px solid #d97b32;
+  border-left: 5px solid var(--accent);
 }
 
 .piano-roll-row {
@@ -294,11 +367,12 @@ code {
 .piano-roll-label {
   width: 44px;
   flex-shrink: 0;
-  background: #2c2c36;
-  color: #cfcac0;
+  background: var(--surface);
+  color: var(--text-muted);
   border: none;
-  border-right: 1px solid #17171c;
+  border-right: 1px solid var(--border);
   font-size: 0.7rem;
+  font-weight: 700;
   cursor: pointer;
   position: sticky;
   left: 0;
@@ -306,7 +380,8 @@ code {
 }
 
 .piano-roll-label:hover {
-  background: #3a3a48;
+  background: var(--surface-hover);
+  color: var(--text);
 }
 
 .piano-roll-steps {
@@ -318,14 +393,14 @@ code {
   flex-shrink: 0;
   height: 22px;
   border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  border-left: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-left: 1px solid rgba(255, 255, 255, 0.04);
   background: transparent;
   cursor: pointer;
 }
 
 .piano-roll-cell-beat {
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
 }
 
 .piano-roll-cell:hover {
@@ -334,17 +409,27 @@ code {
 
 /* Note bodies: a slightly muted fill for the note's full span, brighter at
    the head (where it starts) and rounded at head/tail so a multi-cell note
-   reads as one connected block rather than separate squares. */
-.piano-roll-cell-on {
-  background: #5a52d1;
+   reads as one connected block rather than separate squares. Colored per
+   track to match its accent (pink melody, teal bass). */
+.piano-roll-melody .piano-roll-cell-on {
+  background: #c22f66;
 }
 
-.piano-roll-cell-on:hover {
-  background: #6c63ff;
+.piano-roll-melody .piano-roll-cell-on:hover,
+.piano-roll-melody .piano-roll-cell-head.piano-roll-cell-on {
+  background: var(--primary);
+}
+
+.piano-roll-bass .piano-roll-cell-on {
+  background: #1f9e93;
+}
+
+.piano-roll-bass .piano-roll-cell-on:hover,
+.piano-roll-bass .piano-roll-cell-head.piano-roll-cell-on {
+  background: var(--secondary);
 }
 
 .piano-roll-cell-head.piano-roll-cell-on {
-  background: #6c63ff;
   border-radius: 4px 0 0 4px;
 }
 
@@ -357,7 +442,7 @@ code {
 }
 
 .piano-roll-cell-playhead {
-  outline: 1px solid #f0eee8;
+  outline: 1px solid var(--text);
   outline-offset: -1px;
 }
 
@@ -365,26 +450,28 @@ code {
   display: flex;
   align-items: flex-start;
   overflow-x: auto;
-  border: 1px solid #2c2c36;
-  border-left-width: 3px;
-  border-radius: 8px;
+  border: 3px solid var(--ink);
+  border-left-width: 5px;
+  border-radius: var(--radius);
 }
 
 .live-keyboard-melody {
-  border-left-color: #6c63ff;
+  border-left-color: var(--primary);
 }
 
 .live-key {
+  position: relative;
   flex: 0 0 34px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  padding-bottom: 8px;
+  padding-bottom: 22px;
   border: none;
-  border-right: 1px solid #17171c;
+  border-right: 1px solid var(--ink);
   cursor: pointer;
   font-size: 0.7rem;
+  font-weight: 700;
 }
 
 .live-keyboard-scale .live-key {
@@ -392,39 +479,44 @@ code {
 }
 
 .live-key-white {
-  background: #eee8dd;
-  color: #444;
+  background: var(--text);
+  color: var(--ink);
   height: 130px;
 }
 
 .live-key-white:hover {
-  background: #ddd6c8;
+  background: #ffe9d6;
 }
 
 .live-key-black {
-  background: #17171c;
-  color: #ddd;
+  background: var(--ink);
+  color: var(--text);
   height: 86px;
 }
 
 .live-key-black:hover {
-  background: #2c2c36;
+  background: #1c2050;
 }
 
 .live-key-pressed {
-  filter: brightness(0.75);
+  filter: brightness(0.8) saturate(1.4);
 }
 
 .live-key-hint {
+  position: absolute;
+  bottom: 6px;
+  left: 0;
+  right: 0;
   display: block;
+  text-align: center;
   font-size: 0.6rem;
-  opacity: 0.6;
+  opacity: 0.65;
   text-transform: uppercase;
-  margin-top: 3px;
 }
 
 .chord-label {
   margin-right: 2px;
+  font-weight: 700;
 }
 
 .insert-slots {
@@ -432,7 +524,7 @@ code {
 }
 
 .insert-slots button {
-  padding: 8px 10px;
+  padding: 0.5rem 0.7rem;
 }
 
 .chord-form {
@@ -444,21 +536,32 @@ code {
 
 .chord-input {
   flex: 1;
-  background: #2c2c36;
-  border: 1px solid #3a3a48;
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: #f0eee8;
+  background: var(--bg-alt);
+  border: 3px solid var(--ink);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.9rem;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-weight: 700;
   font-size: 0.9rem;
+  box-shadow: inset 3px 3px 0 rgba(0, 0, 0, 0.2);
 }
 
 .chord-input::placeholder {
-  color: #6c6a72;
+  color: var(--text-muted);
+  opacity: 0.8;
+  font-weight: 500;
+}
+
+.chord-input:focus {
+  outline: 3px solid var(--secondary);
+  outline-offset: 1px;
 }
 
 .chord-error {
-  color: #ff8a80;
+  color: var(--danger);
   font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .playback {
@@ -472,22 +575,23 @@ code {
 .credit {
   text-align: center;
   margin-top: 20px;
+  color: var(--text-muted);
 }
 
 .song-panel {
-  border-color: #6c63ff;
+  border-color: var(--accent);
 }
 
 .song-name {
-  font-size: 1.15rem;
-  font-weight: 700;
+  font-size: 1.2rem;
+  font-weight: 800;
   margin: 4px 0 14px;
 }
 
 .song-choices {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 14px;
 }
 
@@ -496,21 +600,27 @@ code {
   flex-direction: column;
   gap: 2px;
   text-align: left;
-  background: #2c2c36;
-  border: none;
-  border-radius: 8px;
+  background: var(--bg-alt);
+  border: 3px solid var(--ink);
+  border-radius: var(--radius);
   padding: 10px 14px;
   cursor: pointer;
+  box-shadow: 3px 3px 0 var(--ink);
+  transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.12s ease, background 0.15s ease;
 }
 
 .song-choice:hover {
-  background: #3a3a48;
+  background: var(--surface-hover);
+  transform: translate(-1px, -2px) rotate(-1deg);
+  box-shadow: 4px 5px 0 var(--ink);
 }
 
 .song-choice-title {
-  font-weight: 700;
+  font-weight: 800;
+  color: var(--text);
 }
 
 .song-choice-artist {
   font-size: 0.85rem;
+  color: var(--text-muted);
 }
