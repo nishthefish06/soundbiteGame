@@ -1,4 +1,4 @@
-import { GameState, PROMPT_SELECTION_DURATION_MS, RECORDING_PREP_DURATION_MS, RECORDING_DURATION_MS, RECORDING_GRACE_MS, GUESSING_DURATION_MS, RATING_DURATION_MS, GROUP_RECORDING_DURATION_MS, MATCHING_DURATION_MS, REVEAL_DURATION_MS, DISCONNECT_GRACE_MS, MAX_CUSTOM_PROMPTS, MAX_CUSTOM_PROMPT_LENGTH } from '../game/constants.js';
+import { GameState, PROMPT_SELECTION_DURATION_MS, RECORDING_PREP_DURATION_MS, RECORDING_DURATION_MS, RECORDING_GRACE_MS, GUESSING_DURATION_MS, RATING_DURATION_MS, GROUP_RECORDING_DURATION_MS, MATCHING_DURATION_MS, COMPOSING_DURATION_MS, SONG_REVEAL_DURATION_MS, REVEAL_DURATION_MS, DISCONNECT_GRACE_MS, MAX_CUSTOM_PROMPTS, MAX_CUSTOM_PROMPT_LENGTH } from '../game/constants.js';
 import { redactSnapshotFor, redactGuessFor } from './redact.js';
 import { isProfane } from '../game/profanity.js';
 
@@ -21,6 +21,12 @@ export function attachSocketHandlers(io, manager) {
   // finishes recording early hear everyone else's clip before shuffling/
   // ordering is decided. Cleared once the round reaches ROUND_REVEAL.
   const whoSaidItClips = new Map(); // roomCode -> Map<playerId, { modifier, audio }>
+  // SONG_RECREATION mode only: every submitted composition's audio, held
+  // here (not broadcast) until reveal needs it — same "don't leak clips
+  // early" reasoning as whoSaidItClips. Cleared once the round reaches
+  // ROUND_REVEAL. No `modifier` field (voice effects don't apply to a
+  // composed track).
+  const songCompositionClips = new Map(); // roomCode -> Map<playerId, { audio }>
 
   function joinRoom(socket, room, playerId, name) {
     // Let Room reject first (e.g. ROOM_FULL) before we touch any socket state.
@@ -58,6 +64,7 @@ export function attachSocketHandlers(io, manager) {
     roomCleanups.delete(room.code);
     telephoneOriginalAudio.delete(room.code);
     whoSaidItClips.delete(room.code);
+    songCompositionClips.delete(room.code);
     manager.removeRoom(room.code);
   }
 
@@ -85,7 +92,7 @@ export function attachSocketHandlers(io, manager) {
         assertIdentity(playerId, name);
         const room = manager.createRoom();
         roomCleanups.set(room.code, wirePhaseTimers(room));
-        wireBroadcasts(room, io, playerSocketIds, telephoneOriginalAudio, whoSaidItClips);
+        wireBroadcasts(room, io, playerSocketIds, telephoneOriginalAudio, whoSaidItClips, songCompositionClips);
         joinRoom(socket, room, playerId, name.trim());
         reply(ack, { ok: true, roomCode: room.code, snapshot: redactSnapshotFor(room.toJSON(), playerId) });
       } catch (err) {
@@ -169,6 +176,24 @@ export function attachSocketHandlers(io, manager) {
         room.submitRecording(socket.data.playerId, modifier);
         if (isChainOriginHop) telephoneOriginalAudio.set(room.code, { modifier, audio });
         socket.to(room.code).emit('game:audioBroadcast', { modifier, audio });
+        reply(ack, { ok: true });
+      });
+    });
+
+    // SONG_RECREATION mode only: mirrors game:submitRecording's WHO_SAID_IT
+    // branch — stashed *before* calling room.submitComposition for the same
+    // race reason (the last submission can synchronously transition into
+    // SONG_REVEAL_ACTIVE, whose stateChange handler synchronously reads this
+    // map to release composition 0's audio).
+    socket.on('game:submitComposition', (payload = {}, ack) => {
+      withRoom(socket, ack, (room) => {
+        const { song, audio } = payload;
+        if (!audio) throw new Error('MISSING_AUDIO');
+
+        const clips = songCompositionClips.get(room.code) ?? new Map();
+        clips.set(socket.data.playerId, { audio });
+        songCompositionClips.set(room.code, clips);
+        room.submitComposition(socket.data.playerId, song);
         reply(ack, { ok: true });
       });
     });
@@ -289,6 +314,10 @@ export function attachSocketHandlers(io, manager) {
         phaseTimer = setTimeout(() => safely(() => room.finishGroupRecording()), GROUP_RECORDING_DURATION_MS);
       } else if (next === GameState.MATCHING_ACTIVE) {
         phaseTimer = setTimeout(() => safely(() => room.endMatching()), MATCHING_DURATION_MS);
+      } else if (next === GameState.COMPOSING) {
+        phaseTimer = setTimeout(() => safely(() => room.finishComposing()), COMPOSING_DURATION_MS);
+      } else if (next === GameState.SONG_REVEAL_ACTIVE) {
+        phaseTimer = setTimeout(() => safely(() => room.endSongReveal()), SONG_REVEAL_DURATION_MS);
       } else if (next === GameState.ROUND_REVEAL) {
         phaseTimer = setTimeout(() => safely(() => room.finishReveal()), REVEAL_DURATION_MS);
       }
@@ -300,7 +329,7 @@ export function attachSocketHandlers(io, manager) {
 
 // Broadcast wiring: relays Room events out to sockets, redacting per-viewer
 // where the payload would otherwise leak the answer.
-function wireBroadcasts(room, io, playerSocketIds, telephoneOriginalAudio, whoSaidItClips) {
+function wireBroadcasts(room, io, playerSocketIds, telephoneOriginalAudio, whoSaidItClips, songCompositionClips) {
   room.on('playersChanged', ({ players }) => {
     io.to(room.code).emit('room:playersChanged', players);
   });
@@ -321,6 +350,11 @@ function wireBroadcasts(room, io, playerSocketIds, telephoneOriginalAudio, whoSa
     io.to(room.code).emit('game:groupRecordingProgress', { count, total });
   });
 
+  // Same idea, for SONG_RECREATION's simultaneous composing phase.
+  room.on('composingProgress', ({ count, total }) => {
+    io.to(room.code).emit('game:composingProgress', { count, total });
+  });
+
   room.on('hostChanged', ({ hostId }) => {
     io.to(room.code).emit('room:hostChanged', hostId);
   });
@@ -333,6 +367,7 @@ function wireBroadcasts(room, io, playerSocketIds, telephoneOriginalAudio, whoSa
         telephoneOriginalAudio.delete(room.code);
       }
       whoSaidItClips.delete(room.code);
+      songCompositionClips.delete(room.code);
     }
 
     // WHO_SAID_IT: release exactly one clip's audio per entry into
@@ -345,6 +380,16 @@ function wireBroadcasts(room, io, playerSocketIds, telephoneOriginalAudio, whoSa
     if (next === GameState.MATCHING_ACTIVE) {
       const clip = whoSaidItClips.get(room.code)?.get(room.clipOrder[room.clipIndex]);
       if (clip) io.to(room.code).emit('game:audioBroadcast', clip);
+    }
+
+    // SONG_RECREATION: same one-at-a-time release, keyed by songOrder/
+    // songIndex instead. No `modifier` field on the stashed clip (composed
+    // tracks don't have one) — the payload still carries the key so
+    // useGameRoom's shared onAudioBroadcast handler doesn't need a
+    // mode-specific branch.
+    if (next === GameState.SONG_REVEAL_ACTIVE) {
+      const clip = songCompositionClips.get(room.code)?.get(room.songOrder[room.songIndex]);
+      if (clip) io.to(room.code).emit('game:audioBroadcast', { modifier: null, audio: clip.audio });
     }
 
     for (const player of room.playerList) {

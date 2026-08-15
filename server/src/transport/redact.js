@@ -35,6 +35,13 @@ export function redactSnapshotFor(snapshot, viewerId) {
     currentClipOwnerId:
       isRevealed || viewerId === snapshot.currentClipOwnerId ? snapshot.currentClipOwnerId : null,
     clipResults: isRevealed ? snapshot.clipResults : [],
+    // SONG_RECREATION mode: currentSong is the actual secret (unlike
+    // currentComposerId, which everyone can see raw — see toJSON()), hidden
+    // from everyone until reveal, same rule as currentPrompt. No
+    // originator/isWhoSaidIt-style early-access case here: the composer
+    // already knows their own song without needing server confirmation.
+    currentSong: isRevealed ? snapshot.currentSong : null,
+    songResults: isRevealed ? snapshot.songResults : [],
   };
 }
 

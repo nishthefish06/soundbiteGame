@@ -6,6 +6,7 @@ import { io as ioClient } from 'socket.io-client';
 import { RoomManager } from '../game/RoomManager.js';
 import { GAME_MODES } from '../game/prompts.js';
 import { GUESSING_DURATION_MS, PROMPT_SELECTION_DURATION_MS } from '../game/constants.js';
+import { SONGS } from '../game/songs.js';
 import { attachSocketHandlers } from './socketServer.js';
 
 async function startTestServer() {
@@ -660,6 +661,113 @@ test('WHO_SAID_IT mode: clip audio releases one at a time, and currentClipOwnerI
         'once revealed, everyone sees the (last) clip owner',
       );
       assert.equal(stateChanges[p.playerId].clipResults.length, 3, 'clipResults are visible to everyone at reveal');
+    }
+
+    for (const p of all) p.socket.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('SONG_RECREATION mode: composition audio releases one at a time, currentSong is hidden until reveal, and title/artist score independently', async () => {
+  const server = await startTestServer();
+  try {
+    const host = await makePlayer(server.url, 'Alice');
+    const p2 = await makePlayer(server.url, 'Bob', host.roomCode);
+    const p3 = await makePlayer(server.url, 'Cara', host.roomCode);
+    const all = [host, p2, p3];
+    const byId = Object.fromEntries(all.map((p) => [p.playerId, p]));
+
+    const stateChanges = {};
+    for (const p of all) {
+      p.socket.on('game:stateChanged', (s) => { stateChanges[p.playerId] = s; });
+    }
+    const audioReceived = { [host.playerId]: [], [p2.playerId]: [], [p3.playerId]: [] };
+    for (const p of all) {
+      p.socket.on('game:audioBroadcast', (payload) => audioReceived[p.playerId].push(payload));
+    }
+
+    const startRes = await ack(host.socket, 'game:startGame', { roundCount: 1, mode: 'SONG_RECREATION' });
+    assert.equal(startRes.ok, true);
+
+    const room = server.manager.getRoom(host.roomCode);
+    assert.equal(room.state, 'COMPOSING');
+    await new Promise((r) => setTimeout(r, 50));
+    for (const p of all) {
+      assert.equal(stateChanges[p.playerId].promptOptions.length, 0, "nobody's dealt a shared prompt in this mode");
+    }
+
+    // Each player's composed track is a distinguishable buffer so it can be
+    // traced back to its composer once broadcast.
+    const clipFor = {
+      [host.playerId]: new Uint8Array([1, 1, 1]).buffer,
+      [p2.playerId]: new Uint8Array([2, 2, 2]).buffer,
+      [p3.playerId]: new Uint8Array([3, 3, 3]).buffer,
+    };
+    const songFor = { [host.playerId]: SONGS[0], [p2.playerId]: SONGS[1], [p3.playerId]: SONGS[2] };
+
+    await ack(host.socket, 'game:submitComposition', { song: songFor[host.playerId], audio: clipFor[host.playerId] });
+    await ack(p2.socket, 'game:submitComposition', { song: songFor[p2.playerId], audio: clipFor[p2.playerId] });
+    await new Promise((r) => setTimeout(r, 50));
+    for (const p of all) {
+      assert.equal(audioReceived[p.playerId].length, 0, 'no composition should release before everyone has submitted');
+    }
+
+    await ack(p3.socket, 'game:submitComposition', { song: songFor[p3.playerId], audio: clipFor[p3.playerId] });
+    assert.equal(room.state, 'SONG_REVEAL_ACTIVE', 'the state transition itself is synchronous with the last submission');
+
+    await waitUntil(() => all.every((p) => audioReceived[p.playerId].length === 1));
+    const firstComposerId = room.songOrder[0];
+    const releasedBytes = new Uint8Array(audioReceived[firstComposerId][0].audio);
+    assert.deepEqual(
+      [...releasedBytes],
+      [...new Uint8Array(clipFor[firstComposerId])],
+      'the released composition matches its true composer, not some other player',
+    );
+
+    // currentComposerId is safe raw (everyone always knows whose track is
+    // playing); currentSong (the actual answer) is hidden from everyone,
+    // composer included, until reveal.
+    for (const p of all) {
+      assert.equal(stateChanges[p.playerId].currentComposerId, firstComposerId);
+      assert.equal(stateChanges[p.playerId].currentSong, null);
+    }
+
+    const firstSong = songFor[firstComposerId];
+    const [g1, g2] = all.filter((p) => p.playerId !== firstComposerId);
+
+    const titleOnlyRes = await ack(g1.socket, 'game:submitGuess', { text: firstSong.title });
+    assert.equal(titleOnlyRes.ok, true);
+    assert.equal(titleOnlyRes.correct, false, 'title alone is a partial guess, not a full solve');
+
+    const bothAtOnceRes = await ack(g2.socket, 'game:submitGuess', { text: `${firstSong.title} ${firstSong.artist}` });
+    assert.equal(bothAtOnceRes.ok, true);
+    assert.equal(bothAtOnceRes.correct, true, 'title + artist in one message fully solves it');
+
+    // Round only has 3 compositions and g1 hasn't solved theirs yet, so this shouldn't have advanced.
+    assert.equal(room.state, 'SONG_REVEAL_ACTIVE');
+    assert.equal(room.songIndex, 0);
+
+    const artistRes = await ack(g1.socket, 'game:submitGuess', { text: firstSong.artist });
+    assert.equal(artistRes.ok, true);
+    assert.equal(artistRes.correct, true, 'the second half, in a separate message, completes the solve');
+
+    assert.equal(room.songIndex, 1, 'both guessers solved it — moved on to the next composition');
+
+    // Resolve the remaining two compositions so the round reveals.
+    while (room.state === 'SONG_REVEAL_ACTIVE') {
+      const composerId = room.songOrder[room.songIndex];
+      const song = room.currentSong;
+      const eligible = all.filter((p) => p.playerId !== composerId);
+      for (const g of eligible) {
+        await ack(byId[g.playerId].socket, 'game:submitGuess', { text: `${song.title} ${song.artist}` });
+      }
+    }
+    assert.equal(room.state, 'ROUND_REVEAL');
+    await waitUntil(() => all.every((p) => stateChanges[p.playerId]?.state === 'ROUND_REVEAL'));
+
+    for (const p of all) {
+      assert.equal(stateChanges[p.playerId].songResults.length, 3, 'songResults are visible to everyone at reveal');
     }
 
     for (const p of all) p.socket.close();
