@@ -18,9 +18,18 @@ function getStablePlayerId() {
 
 export function useSocket() {
   const socketRef = useRef(null);
+  const playerIdRef = useRef(null);
   const [connected, setConnected] = useState(false);
   if (!socketRef.current) {
     socketRef.current = io(SERVER_URL, { autoConnect: true });
+  }
+  // Computed once per mount, not on every render — localStorage.getItem is
+  // live, so re-reading it on every render would silently change this tab's
+  // identity mid-session if another same-origin tab ever writes a different
+  // value to the same key (e.g. two tabs of the app open at once racing to
+  // generate the initial id before either has written it back).
+  if (!playerIdRef.current) {
+    playerIdRef.current = getStablePlayerId();
   }
 
   useEffect(() => {
@@ -35,5 +44,5 @@ export function useSocket() {
     };
   }, []);
 
-  return { socket: socketRef.current, connected, playerId: getStablePlayerId() };
+  return { socket: socketRef.current, connected, playerId: playerIdRef.current };
 }
