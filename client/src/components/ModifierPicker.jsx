@@ -28,7 +28,7 @@ export function ModifierPicker({ value, onChange, disabled }) {
       {Object.entries(VOICE_MODIFIERS).map(([key, m]) => {
         const Icon = MODIFIER_ICONS[key];
         const isSelected = selected.includes(key);
-        const order = isSelected && selected.length > 1 ? selected.indexOf(key) + 1 : null;
+        const order = isSelected ? selected.indexOf(key) + 1 : null;
         return (
           <button
             key={key}
