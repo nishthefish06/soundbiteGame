@@ -124,25 +124,26 @@ const WELL_KNOWN_INDIE = [
 
 // TV/movie theme songs — mostly instrumental, which is a natural fit for
 // this mode since there's no vocal melody to worry about recreating, just
-// the theme itself. Picked for maximum recognizability of the theme even
-// where the composer's name itself might be a tougher artist-guess.
+// the theme itself. Unlike every other bucket, "well-known" here has to hold
+// for BOTH halves independently (title recognition from the melody doesn't
+// carry over to knowing who wrote it) — so this trims hard to only themes
+// whose composer/artist is itself a broadly recognized name (John Williams,
+// Hans Zimmer, John Carpenter, Will Smith), not just genre-canon-famous
+// (Lalo Schifrin, Ramin Djawadi, Bill Conti, John Barry, Henry Mancini, Gary
+// Portnoy, The Rembrandts) or a title-only obscure/mismatched name (Danny
+// Elfman for The Simpsons — well known for other work, not that credit).
+// Also drops Stranger Things (Kyle Dixon & Michael Stein) for being a
+// two-person credit, same duet/multi-headliner exclusion every other bucket
+// already applies.
 const THEME_SONGS = [
-  s('I’ll Be There for You', 'The Rembrandts'),
-  s('Where Everybody Knows Your Name', 'Gary Portnoy'),
   s('Fresh Prince of Bel-Air', 'Will Smith'),
-  s('The Simpsons Theme', 'Danny Elfman'),
   s('Star Wars Main Theme', 'John Williams'),
   s('Jaws Theme', 'John Williams'),
   s('Jurassic Park Theme', 'John Williams'),
   s('Raiders March', 'John Williams'),
-  s('Mission Impossible Theme', 'Lalo Schifrin'),
   s('He’s a Pirate', 'Hans Zimmer'),
-  s('Game of Thrones Theme', 'Ramin Djawadi'),
-  s('Stranger Things Theme', 'Kyle Dixon & Michael Stein'),
-  s('Gonna Fly Now', 'Bill Conti'),
-  s('James Bond Theme', 'John Barry'),
   s('Halloween Theme', 'John Carpenter'),
-  s('The Pink Panther Theme', 'Henry Mancini'),
+  s('The Mandalorian Theme', 'Ludwig Göransson'),
 ];
 
 // Video game music — kept to only the handful with real mainstream
