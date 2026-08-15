@@ -12,9 +12,14 @@ import {
   POINTS_PER_STAR,
   POINTS_CORRECT_MATCH,
   POINTS_PER_EVADED_GUESSER,
+  POINTS_SONG_TITLE,
+  POINTS_SONG_ARTIST,
+  POINTS_SONG_BOTH_BONUS,
+  POINTS_COMPOSER_PER_CORRECT_GUESSER,
   isValidModifierCombo,
 } from './constants.js';
 import { GAME_MODES } from './prompts.js';
+import { SONGS } from './songs.js';
 
 function makeRoom(playerCount = 3) {
   const room = new Room('TEST');
@@ -1217,4 +1222,240 @@ test('WHO_SAID_IT mode: a spectator who joins mid-round is promoted into recordi
   assert.equal(room.state, GameState.GROUP_RECORDING, 'next round started');
   room.submitGroupRecording('latecomer', 'ROBOT'); // no longer spectating — should succeed, not throw
   assert.ok(room.groupRecordings.has('latecomer'));
+});
+
+// -- SONG_RECREATION mode --
+
+function startSongRecreationGame(room, rounds = 1) {
+  room.startGame(room.hostId, rounds, 'SONG_RECREATION');
+}
+
+// Submits a distinct real song (from the curated pool) for every
+// non-spectating player, in order — distinct so a guess in tests can't
+// accidentally match the wrong composer's song.
+function submitAllCompositions(room) {
+  room.playerList
+    .filter((p) => !p.spectating)
+    .forEach((player, i) => room.submitComposition(player.id, SONGS[i]));
+}
+
+// Resolves every composition in the current SONG_REVEAL_ACTIVE round by
+// having every eligible guesser submit a supplied guess (defaults to "title
+// artist" in one message, solving it with the bonus) until the round moves on.
+function resolveAllSongs(room, guessTextFor = (song) => `${song.title} ${song.artist}`) {
+  while (room.state === GameState.SONG_REVEAL_ACTIVE) {
+    const composerId = room.songOrder[room.songIndex];
+    const song = room.currentSong;
+    const guessers = room.playerList.filter((p) => !p.spectating && p.id !== composerId).map((p) => p.id);
+    for (const guesserId of guessers) {
+      room.submitGuess(guesserId, guessTextFor(song));
+    }
+  }
+}
+
+test('startGame in SONG_RECREATION mode goes straight to COMPOSING with no actor and no server-dealt prompt', () => {
+  const room = makeRoom(3);
+  startSongRecreationGame(room);
+
+  assert.equal(room.state, GameState.COMPOSING);
+  assert.equal(room.actorId, null);
+  assert.equal(room.chainOrder.length, 0);
+  assert.equal(room.currentPrompt, null);
+  assert.equal(room.promptOptions.length, 0, 'each player picks their own song client-side, not from a dealt list');
+});
+
+test('SONG_RECREATION mode: submitComposition rejects unknown players, double-submits, and songs not in the pool', () => {
+  const room = makeRoom(3);
+  startSongRecreationGame(room);
+  const [a, b] = room.playerList.map((p) => p.id);
+
+  assert.throws(() => room.submitComposition('nope', SONGS[0]), /UNKNOWN_PLAYER/);
+  assert.throws(() => room.submitComposition(a, { title: 'Not Real', artist: 'Nobody' }), /INVALID_SONG/);
+
+  room.submitComposition(a, SONGS[0]);
+  assert.throws(() => room.submitComposition(a, SONGS[1]), /ALREADY_SUBMITTED/);
+  assert.equal(room.state, GameState.COMPOSING, 'still waiting on the third player');
+
+  room.submitComposition(b, SONGS[1]);
+});
+
+test('SONG_RECREATION mode: moves to SONG_REVEAL_ACTIVE once every non-spectating player has composed', () => {
+  const room = makeRoom(4);
+  startSongRecreationGame(room);
+  submitAllCompositions(room);
+
+  assert.equal(room.state, GameState.SONG_REVEAL_ACTIVE);
+  assert.equal(room.songOrder.length, 4);
+  assert.deepEqual([...room.songOrder].sort(), room.playerList.map((p) => p.id).sort());
+  assert.equal(room.songIndex, 0);
+  assert.deepEqual(room.currentSong, room.songSubmissions.get(room.songOrder[0]));
+});
+
+test('SONG_RECREATION mode: a mid-game spectator does not count toward the composing total and cannot compose', () => {
+  const room = makeRoom(3);
+  startSongRecreationGame(room);
+  room.addPlayer('latecomer', 'Latecomer');
+
+  assert.throws(() => room.submitComposition('latecomer', SONGS[0]), /SPECTATING/);
+
+  submitAllCompositions(room); // the original 3 only
+  assert.equal(room.state, GameState.SONG_REVEAL_ACTIVE, "latecomer isn't part of the denominator");
+});
+
+test('SONG_RECREATION mode: the composer cannot guess their own song, and cannot guess again once solved', () => {
+  const room = makeRoom(3);
+  startSongRecreationGame(room);
+  submitAllCompositions(room);
+
+  const composerId = room.songOrder[room.songIndex];
+  const song = room.currentSong;
+  const [guesser] = room.playerList.map((p) => p.id).filter((id) => id !== composerId);
+
+  assert.throws(() => room.submitGuess(composerId, `${song.title} ${song.artist}`), /ACTOR_CANNOT_GUESS/);
+
+  room.submitGuess(guesser, `${song.title} ${song.artist}`); // solves it in one message
+  assert.throws(() => room.submitGuess(guesser, 'anything'), /ALREADY_GUESSED_CORRECTLY/);
+});
+
+test('SONG_RECREATION mode: title and artist score independently, and the bonus only fires when one guess lands both', () => {
+  const room = makeRoom(3); // 1 composer, 2 guessers
+  startSongRecreationGame(room);
+  submitAllCompositions(room);
+
+  const composerId = room.songOrder[room.songIndex];
+  const song = room.currentSong;
+  const [g1, g2] = room.playerList.map((p) => p.id).filter((id) => id !== composerId);
+
+  room.submitGuess(g1, song.title); // title only
+  assert.equal(room.players.get(g1).score, POINTS_SONG_TITLE);
+  assert.equal(room.correctGuesserIds.has(g1), false, 'not fully solved yet');
+
+  room.submitGuess(g1, song.artist); // artist, in a separate message — no bonus
+  assert.equal(room.players.get(g1).score, POINTS_SONG_TITLE + POINTS_SONG_ARTIST);
+  assert.equal(room.correctGuesserIds.has(g1), true, 'fully solved now');
+
+  room.submitGuess(g2, `${song.title} ${song.artist}`); // both in one message — bonus applies
+  assert.equal(room.players.get(g2).score, POINTS_SONG_TITLE + POINTS_SONG_ARTIST + POINTS_SONG_BOTH_BONUS);
+});
+
+test('SONG_RECREATION mode: the composer earns credit once a guesser fully solves it, not on a partial guess', () => {
+  const room = makeRoom(3);
+  startSongRecreationGame(room);
+  submitAllCompositions(room);
+
+  const composerId = room.songOrder[room.songIndex];
+  const song = room.currentSong;
+  const [guesser] = room.playerList.map((p) => p.id).filter((id) => id !== composerId);
+
+  room.submitGuess(guesser, song.title); // partial — no composer credit yet
+  assert.equal(room.players.get(composerId).score, 0);
+
+  room.submitGuess(guesser, song.artist); // completes it
+  assert.equal(room.players.get(composerId).score, POINTS_COMPOSER_PER_CORRECT_GUESSER);
+});
+
+test('SONG_RECREATION mode: cycles through every composition, then reveals with a full songResults recap', () => {
+  const room = makeRoom(4);
+  startSongRecreationGame(room);
+  submitAllCompositions(room);
+
+  resolveAllSongs(room); // everyone solves each one by default
+
+  assert.equal(room.state, GameState.ROUND_REVEAL);
+  assert.equal(room.songResults.length, 4);
+  for (const result of room.songResults) {
+    assert.equal(result.correctGuesserIds.length, 3, 'every non-composer solved it');
+  }
+});
+
+test('SONG_RECREATION mode: finishReveal ends the game after the configured round count (round == turn here)', () => {
+  const room = makeRoom(3);
+  startSongRecreationGame(room, 1);
+  submitAllCompositions(room);
+  resolveAllSongs(room);
+
+  room.finishReveal();
+  assert.equal(room.state, GameState.GAME_OVER);
+});
+
+test('SONG_RECREATION mode: plays multiple rounds, reshuffling who composes each time', () => {
+  const room = makeRoom(3);
+  startSongRecreationGame(room, 3);
+
+  for (let i = 0; i < 3; i += 1) {
+    assert.equal(room.state, GameState.COMPOSING);
+    submitAllCompositions(room);
+    resolveAllSongs(room);
+    assert.equal(room.state, GameState.ROUND_REVEAL);
+    room.finishReveal();
+  }
+
+  assert.equal(room.state, GameState.GAME_OVER);
+  assert.equal(room.roundNumber, 3);
+});
+
+test('SONG_RECREATION mode: endSongReveal() force-resolves the current composition on a timeout (backstop)', () => {
+  const room = makeRoom(3);
+  startSongRecreationGame(room);
+  submitAllCompositions(room);
+
+  const composerId = room.songOrder[room.songIndex];
+  const song = room.currentSong;
+  const [guesser] = room.playerList.map((p) => p.id).filter((id) => id !== composerId);
+  room.submitGuess(guesser, `${song.title} ${song.artist}`); // only one of two eligible guessers answers in time
+
+  room.endSongReveal();
+  assert.equal(room.songResults.length, 1);
+  assert.deepEqual(room.songResults[0].correctGuesserIds, [guesser]);
+});
+
+test('SONG_RECREATION mode: finishComposing proceeds with whoever submitted once the timer fires (backstop)', () => {
+  const room = makeRoom(4);
+  startSongRecreationGame(room);
+  const [a, b] = room.playerList.map((p) => p.id);
+  room.submitComposition(a, SONGS[0]);
+  room.submitComposition(b, SONGS[1]); // only 2 of 4 submitted before the timer fired
+
+  room.finishComposing();
+
+  assert.equal(room.state, GameState.SONG_REVEAL_ACTIVE);
+  assert.deepEqual([...room.songOrder].sort(), [a, b].sort());
+});
+
+test('SONG_RECREATION mode: finishComposing skips the round entirely if nobody submitted', () => {
+  const room = makeRoom(3);
+  startSongRecreationGame(room, 3);
+
+  room.finishComposing();
+
+  assert.equal(room.state, GameState.COMPOSING, 'moved straight on to the next round');
+  assert.equal(room.roundNumber, 2);
+});
+
+test('SONG_RECREATION mode: a spectator who joins mid-round is promoted into composing eligibility next round', () => {
+  const room = makeRoom(3);
+  startSongRecreationGame(room, 3);
+  room.addPlayer('latecomer', 'Latecomer');
+  assert.equal(room.players.get('latecomer').spectating, true);
+
+  submitAllCompositions(room); // original 3 only
+  resolveAllSongs(room);
+  room.finishReveal();
+
+  assert.equal(room.players.get('latecomer').spectating, false, 'promoted at the round boundary');
+  assert.equal(room.state, GameState.COMPOSING, 'next round started');
+  room.submitComposition('latecomer', SONGS[0]); // no longer spectating — should succeed, not throw
+  assert.ok(room.songSubmissions.has('latecomer'));
+});
+
+test('SONG_RECREATION mode: streaks are not tracked', () => {
+  const room = makeRoom(3);
+  startSongRecreationGame(room, 1);
+  submitAllCompositions(room);
+  resolveAllSongs(room);
+  room.finishReveal();
+
+  for (const player of room.playerList) {
+    assert.equal(player.streak, 0);
+  }
 });

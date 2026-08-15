@@ -16,6 +16,14 @@ export const GameState = Object.freeze({
   // WHO_SAID_IT mode only: one recorded clip plays and everyone but its
   // owner guesses who recorded it. Re-entered once per clip within a round.
   MATCHING_ACTIVE: 'MATCHING_ACTIVE',
+  // SONG_RECREATION mode only: every non-spectating player simultaneously
+  // picks a song and builds it out with the composer, instead of one actor
+  // taking a turn.
+  COMPOSING: 'COMPOSING',
+  // SONG_RECREATION mode only: one player's composition plays and everyone
+  // else free-guesses its title/artist. Re-entered once per composition
+  // within a round, same cycling shape as MATCHING_ACTIVE.
+  SONG_REVEAL_ACTIVE: 'SONG_REVEAL_ACTIVE',
   ROUND_REVEAL: 'ROUND_REVEAL',
   GAME_OVER: 'GAME_OVER',
 });
@@ -44,6 +52,12 @@ export const RATING_DURATION_MS = 30_000;
 // guessing each individual clip's owner once matching starts.
 export const GROUP_RECORDING_DURATION_MS = RECORDING_PREP_DURATION_MS + RECORDING_DURATION_MS;
 export const MATCHING_DURATION_MS = 20_000;
+// SONG_RECREATION mode: budget for the simultaneous composing phase (picking
+// a song and building it out is more involved than a voice recording, hence
+// longer than GROUP_RECORDING_DURATION_MS) and for guessing each individual
+// composition's title/artist once reveal starts.
+export const COMPOSING_DURATION_MS = 150_000;
+export const SONG_REVEAL_DURATION_MS = 45_000;
 export const REVEAL_DURATION_MS = 8_000;
 
 // Transport-layer grace periods (not used by the pure state machine itself).
@@ -116,6 +130,18 @@ export const POINTS_PER_STAR = 40;
 // guessing several clips per round.
 export const POINTS_CORRECT_MATCH = 100;
 export const POINTS_PER_EVADED_GUESSER = 25;
+
+// SONG_RECREATION mode: title and artist score independently (a partial
+// guess still banks its half), plus a bonus only when a single guess lands
+// both at once — see Room.js's _submitSongGuess for the exact rule. No
+// speed/streak bonus here: those assume one guess resolves the whole round,
+// which doesn't hold when title and artist can be solved across separate
+// messages. POINTS_COMPOSER_PER_CORRECT_GUESSER mirrors
+// POINTS_ACTOR_PER_CORRECT_GUESSER, credited once a guesser fully solves it.
+export const POINTS_SONG_TITLE = 50;
+export const POINTS_SONG_ARTIST = 50;
+export const POINTS_SONG_BOTH_BONUS = 50;
+export const POINTS_COMPOSER_PER_CORRECT_GUESSER = 25;
 
 // A custom-prompt game needs at least enough prompts to fill one round's
 // options; there's no server-side category to fall back on.

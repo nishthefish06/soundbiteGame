@@ -19,8 +19,13 @@ import {
   POINTS_PER_STAR,
   POINTS_CORRECT_MATCH,
   POINTS_PER_EVADED_GUESSER,
+  POINTS_SONG_TITLE,
+  POINTS_SONG_ARTIST,
+  POINTS_SONG_BOTH_BONUS,
+  POINTS_COMPOSER_PER_CORRECT_GUESSER,
 } from './constants.js';
 import { GAME_MODES, createPromptDeck, createPromptDecks } from './prompts.js';
+import { SONGS } from './songs.js';
 
 // Neither is a static server-side category like SOUND_EFFECT/CHARACTER, so
 // both are handled as special cases everywhere GAME_MODES would otherwise be
@@ -41,6 +46,13 @@ const PERFORMANCE_MODE = 'PERFORMANCE';
 // turn, so it reuses the SOUND_EFFECT pool exactly like TELEPHONE does.
 const WHO_SAID_IT_MODE = 'WHO_SAID_IT';
 const WHO_SAID_IT_SOURCE_CATEGORY = 'SOUND_EFFECT';
+
+// Also not a static category, and unlike every other mode there's no shared
+// prompt at all — every non-spectating player independently picks their own
+// song (client-side, from songs.js's pool) and builds it out with the
+// composer, instead of one actor taking a turn or everyone recording the
+// same thing. See _startComposingRound()/_startSongReveal().
+const SONG_RECREATION_MODE = 'SONG_RECREATION';
 
 // Pure, transport-agnostic game state machine for a single room.
 // Holds no socket/timer references; the transport layer wires timers
@@ -103,6 +115,28 @@ export class Room {
     // [{ clipOwnerId, correctGuesserIds }] — so ROUND_REVEAL can show the
     // whole round's clip->owner mapping at once, not just the last clip.
     this.clipResults = [];
+    // SONG_RECREATION mode only: playerId -> {title, artist}, the song each
+    // player chose — filled during COMPOSING. Audio itself lives in the
+    // transport layer (like whoSaidItClips), not here.
+    this.songSubmissions = new Map();
+    // SONG_RECREATION mode only: shuffled playerId order fixed once
+    // COMPOSING closes — songOrder[songIndex] is whose composition is
+    // currently being revealed & guessed. Mirrors clipOrder/clipIndex.
+    this.songOrder = [];
+    this.songIndex = 0;
+    // SONG_RECREATION mode only: {title, artist} for songOrder[songIndex] —
+    // the actual secret currentGuesserIds/etc. are being checked against.
+    // Always present in toJSON(); redact.js hides it until reveal, same as
+    // currentPrompt.
+    this.currentSong = null;
+    // SONG_RECREATION mode only: guesserId -> {titleCorrect, artistCorrect}
+    // for whichever composition is currently playing, reset each time
+    // songIndex advances. See _submitSongGuess().
+    this.songGuessProgress = new Map();
+    // SONG_RECREATION mode only: accumulated once per resolved composition
+    // this round — [{ composerId, title, artist, correctGuesserIds }] —
+    // mirrors clipResults.
+    this.songResults = [];
     // Monotonic count of actor turns since the game started — never resets
     // at a round boundary, unlike roundNumber. Lets the transport/client
     // layers detect "a new turn just began" independent of round semantics.
@@ -255,6 +289,7 @@ export class Room {
       mode !== CUSTOM_MODE &&
       mode !== TELEPHONE_MODE &&
       mode !== WHO_SAID_IT_MODE &&
+      mode !== SONG_RECREATION_MODE &&
       !GAME_MODES.includes(mode)
     ) {
       throw new Error('INVALID_MODE');
@@ -363,21 +398,69 @@ export class Room {
     this._startMatching();
   }
 
+  // SONG_RECREATION mode only: one non-spectating player's simultaneous
+  // composition. Structurally parallel to submitGroupRecording — any
+  // eligible player may submit once, no single actor to assert. `song` is
+  // the {title, artist} the player picked (client-side, from songs.js's
+  // pool); validated here against the real pool so a tampered client can't
+  // submit a fake trivial answer. Audio bytes never reach Room — the
+  // transport layer holds those, same as WHO_SAID_IT's clips.
+  submitComposition(playerId, song) {
+    this._assertState(GameState.COMPOSING);
+    const player = this.players.get(playerId);
+    if (!player) throw new Error('UNKNOWN_PLAYER');
+    if (player.spectating) throw new Error('SPECTATING');
+    if (this.songSubmissions.has(playerId)) throw new Error('ALREADY_SUBMITTED');
+    if (!isValidSong(song)) throw new Error('INVALID_SONG');
+
+    this.songSubmissions.set(playerId, { title: song.title, artist: song.artist });
+    const total = this._eligibleRecorderCount();
+    this.emitter.emit('composingProgress', { room: this.code, count: this.songSubmissions.size, total });
+
+    if (this.songSubmissions.size >= total) {
+      this._startSongReveal();
+    }
+  }
+
+  // Called by the transport layer when the composing timer runs out before
+  // everyone eligible has submitted. Proceeds with whoever did; with zero
+  // submissions there's nothing to reveal, so the round is skipped instead —
+  // same graceful-skip pattern finishGroupRecording uses (that one needs 2+
+  // since it's matching clips against each other; here each composition's
+  // answer stands alone, so even a single submission is still guessable).
+  finishComposing() {
+    this._assertState(GameState.COMPOSING);
+    if (this.songSubmissions.size < 1) {
+      this._advanceTurnOrEndGame();
+      return;
+    }
+    this._startSongReveal();
+  }
+
+  // SONG_RECREATION mode: the current composition has been guessed by
+  // everyone eligible (or its reveal timer ran out) — record the recap
+  // entry, then either move to the next composition or, if that was the
+  // last one, reveal the round. Mirrors _resolveClip().
+  endSongReveal() {
+    this._assertState(GameState.SONG_REVEAL_ACTIVE);
+    this._resolveSong();
+  }
+
   submitGuess(playerId, rawText) {
-    this._assertState(GameState.GUESSING_ACTIVE);
+    const isSongMode = this.currentMode === SONG_RECREATION_MODE;
+    this._assertState(isSongMode ? GameState.SONG_REVEAL_ACTIVE : GameState.GUESSING_ACTIVE);
     const player = this.players.get(playerId);
     if (!player) throw new Error('UNKNOWN_PLAYER');
     if (this._performerIds().has(playerId)) throw new Error('ACTOR_CANNOT_GUESS');
     if (player.spectating) throw new Error('SPECTATING');
     if (this.correctGuesserIds.has(playerId)) throw new Error('ALREADY_GUESSED_CORRECTLY');
 
+    if (isSongMode) {
+      return this._submitSongGuess(playerId, rawText);
+    }
+
     const guessWords = significantWords(rawText);
-    const correct =
-      guessWords.length > 0 &&
-      this.currentPromptAnswers.some((answer) => {
-        const answerWords = significantWords(answer);
-        return guessWords.every((word) => answerWords.includes(word));
-      });
+    const correct = this.currentPromptAnswers.some((answer) => matchesText(guessWords, answer));
     const guess = { playerId, text: rawText, correct, timestamp: Date.now() };
     this.guesses.push(guess);
     this.emitter.emit('guess', { room: this.code, guess });
@@ -401,6 +484,57 @@ export class Room {
       const everyoneGuessed = this.correctGuesserIds.size === this._eligiblePlayerCount();
       if (everyoneGuessed) {
         this._transition(GameState.ROUND_REVEAL);
+      }
+    }
+
+    return guess;
+  }
+
+  // SONG_RECREATION mode's submitGuess branch: title and artist are checked
+  // independently and persist once solved (progress carries across separate
+  // messages), but the +50 bonus only fires when a single guess is what
+  // flips BOTH from unsolved to solved — matching the settled "not
+  // accumulated across separate guesses" rule for the bonus specifically.
+  // `guess.correct` (and correctGuesserIds/ALREADY_GUESSED_CORRECTLY lockout)
+  // means "fully solved", same semantics every other mode gives "correct" —
+  // a title-only or artist-only guess still shows up in guess chat as an
+  // ordinary (non-celebratory) entry, and the guesser can keep trying for
+  // the other half.
+  _submitSongGuess(playerId, rawText) {
+    const guessWords = significantWords(rawText);
+    const song = this.currentSong;
+    const progress = this.songGuessProgress.get(playerId) ?? { titleCorrect: false, artistCorrect: false };
+    const titleNowCorrect = progress.titleCorrect || songFieldMatches(guessWords, song.title);
+    const artistNowCorrect = progress.artistCorrect || songFieldMatches(guessWords, song.artist);
+    const newlyTitle = titleNowCorrect && !progress.titleCorrect;
+    const newlyArtist = artistNowCorrect && !progress.artistCorrect;
+    const bothSolved = titleNowCorrect && artistNowCorrect;
+    this.songGuessProgress.set(playerId, { titleCorrect: titleNowCorrect, artistCorrect: artistNowCorrect });
+
+    const guess = { playerId, text: rawText, correct: bothSolved, timestamp: Date.now() };
+    this.guesses.push(guess);
+    this.emitter.emit('guess', { room: this.code, guess });
+
+    if (newlyTitle || newlyArtist) {
+      const guesser = this.players.get(playerId);
+      let points = 0;
+      if (newlyTitle) points += POINTS_SONG_TITLE;
+      if (newlyArtist) points += POINTS_SONG_ARTIST;
+      if (newlyTitle && newlyArtist) points += POINTS_SONG_BOTH_BONUS;
+      guesser.score += points;
+      this._emitPlayersChanged();
+    }
+
+    if (bothSolved) {
+      this.correctGuesserIds.add(playerId);
+      const composer = this.players.get(this.songOrder[this.songIndex]);
+      if (composer) {
+        composer.score += POINTS_COMPOSER_PER_CORRECT_GUESSER;
+        this._emitPlayersChanged();
+      }
+
+      if (this.correctGuesserIds.size === this._eligiblePlayerCount()) {
+        this._resolveSong();
       }
     }
 
@@ -535,6 +669,17 @@ export class Room {
       // (e.g. one who disconnected, or never got the mic during
       // GROUP_RECORDING) and getting INVALID_GUESS_TARGET back.
       recordedPlayerIds: [...this.groupRecordings.keys()],
+      // SONG_RECREATION mode only. currentComposerId is safe raw (unlike
+      // WHO_SAID_IT's currentClipOwnerId, there's no identity-hiding game
+      // here — everyone always knows whose composition is playing).
+      // currentSong is the actual secret; redact.js hides it until reveal,
+      // same rule as currentPrompt.
+      currentComposerId: this.songOrder[this.songIndex] ?? null,
+      currentSong: this.currentSong,
+      songIndex: this.songIndex,
+      totalSongs: this.songOrder.length,
+      songResults: this.songResults,
+      recordedComposerIds: [...this.songSubmissions.keys()],
       players: this.playerList.map(({ id, name, score, connected, streak, spectating }) => ({
         id,
         name,
@@ -586,6 +731,10 @@ export class Room {
     if (this.currentMode === WHO_SAID_IT_MODE) {
       const ownerId = this.clipOrder[this.clipIndex];
       return ownerId ? new Set([ownerId]) : new Set();
+    }
+    if (this.currentMode === SONG_RECREATION_MODE) {
+      const composerId = this.songOrder[this.songIndex];
+      return composerId ? new Set([composerId]) : new Set();
     }
     return new Set([this.actorId]);
   }
@@ -640,9 +789,9 @@ export class Room {
   // "is what comes next a new round?" without side effects.
   _peekStartsNewRound() {
     if (this.roundNumber === 0) return true;
-    // No multi-turn-per-round concept here — every player records
+    // No multi-turn-per-round concept here — every player records/composes
     // simultaneously, so round and turn coincide.
-    if (this.currentMode === WHO_SAID_IT_MODE) return true;
+    if (this.currentMode === WHO_SAID_IT_MODE || this.currentMode === SONG_RECREATION_MODE) return true;
     return this.actorsThisRound.has(this.actorOrder[0]);
   }
 
@@ -656,6 +805,11 @@ export class Room {
 
     if (this.currentMode === WHO_SAID_IT_MODE) {
       this._startWhoSaidItRound();
+      return;
+    }
+
+    if (this.currentMode === SONG_RECREATION_MODE) {
+      this._startComposingRound();
       return;
     }
 
@@ -760,6 +914,71 @@ export class Room {
     }
   }
 
+  // SONG_RECREATION mode's round start: no actor rotation, no
+  // PROMPT_SELECTION — nobody picks among server-dealt options, each player
+  // draws and picks their own song entirely client-side (see
+  // client/src/composerPrototype). Goes straight to COMPOSING; reveal starts
+  // once every eligible player has submitted (see _startSongReveal()).
+  _startComposingRound() {
+    this.actorId = null;
+    this.chainOrder = [];
+    this.chainIndex = 0;
+    this.promptOptions = [];
+    this.currentPrompt = null;
+    this.currentPromptAnswers = [];
+    this.currentModifier = null;
+    this.songSubmissions = new Map();
+    this.songOrder = [];
+    this.songIndex = 0;
+    this.currentSong = null;
+    this.songGuessProgress = new Map();
+    this.songResults = [];
+    this.guesses = [];
+    this.correctGuesserIds = new Set();
+
+    this._transition(GameState.COMPOSING);
+  }
+
+  // SONG_RECREATION mode: composing has closed (everyone eligible submitted,
+  // or the phase timer forced it) — fix the shuffled reveal order and start
+  // guessing the first composition. Mirrors _startMatching().
+  _startSongReveal() {
+    this.songOrder = shuffle([...this.songSubmissions.keys()]);
+    this.songIndex = 0;
+    this.currentSong = this.songSubmissions.get(this.songOrder[0]);
+    this.songGuessProgress = new Map();
+    this.correctGuesserIds = new Set();
+    this.guesses = [];
+    // One "turn" per composition, same reason _startMatching() bumps it —
+    // the client's existing per-turn reset (clearing chat/incoming audio on
+    // a turnNumber change) then also clears them between compositions.
+    this.turnNumber += 1;
+    this._transition(GameState.SONG_REVEAL_ACTIVE);
+  }
+
+  // SONG_RECREATION mode: the current composition has been guessed by
+  // everyone eligible (or its reveal timer ran out) — record the recap
+  // entry, then either move to the next composition or, if that was the
+  // last one, reveal the round. Scores are already applied per-guess in
+  // _submitSongGuess, mirroring _resolveClip's recap-only role.
+  _resolveSong() {
+    const composerId = this.songOrder[this.songIndex];
+    const song = this.songSubmissions.get(composerId);
+    this.songResults.push({ composerId, title: song.title, artist: song.artist, correctGuesserIds: [...this.correctGuesserIds] });
+
+    if (this.songIndex < this.songOrder.length - 1) {
+      this.songIndex += 1;
+      this.currentSong = this.songSubmissions.get(this.songOrder[this.songIndex]);
+      this.correctGuesserIds = new Set();
+      this.songGuessProgress = new Map();
+      this.guesses = [];
+      this.turnNumber += 1;
+      this._transition(GameState.SONG_REVEAL_ACTIVE);
+    } else {
+      this._transition(GameState.ROUND_REVEAL);
+    }
+  }
+
   // Elapsed time is measured from when the recording was submitted (i.e. when
   // guessing actually opened), decaying linearly to 0 by the time the
   // guessing timer would run out.
@@ -792,8 +1011,14 @@ export class Room {
     // PERFORMANCE mode raters aren't guessing anything right or wrong, so
     // streaks (a guessing-mode concept) don't apply here. WHO_SAID_IT scores
     // per-clip matches immediately (see submitMatchGuess) rather than once
-    // per round, so a single per-round streak doesn't map onto it either.
-    if (this.currentMode === PERFORMANCE_MODE || this.currentMode === WHO_SAID_IT_MODE) return;
+    // per round, so a single per-round streak doesn't map onto it either —
+    // same reasoning for SONG_RECREATION's per-composition scoring.
+    if (
+      this.currentMode === PERFORMANCE_MODE ||
+      this.currentMode === WHO_SAID_IT_MODE ||
+      this.currentMode === SONG_RECREATION_MODE
+    )
+      return;
 
     const performers = this._performerIds();
     for (const player of this.playerList) {
@@ -834,6 +1059,12 @@ export class Room {
     this.clipIndex = 0;
     this.clipGuesses = new Map();
     this.clipResults = [];
+    this.songSubmissions = new Map();
+    this.songOrder = [];
+    this.songIndex = 0;
+    this.currentSong = null;
+    this.songGuessProgress = new Map();
+    this.songResults = [];
   }
 
   _resetGame() {
@@ -916,4 +1147,36 @@ function significantWords(str) {
   return normalize(str)
     .split(' ')
     .filter((word) => word && !STOPWORDS.has(word));
+}
+
+// Shared subset-match rule behind every guess check in this file: guessWords
+// (already run through significantWords) matches answerText if every one of
+// its words appears among answerText's own significant words. Used both for
+// the classic single-answer-set path and SONG_RECREATION's independent
+// title/artist checks.
+function matchesText(guessWords, answerText) {
+  if (guessWords.length === 0) return false;
+  const answerWords = significantWords(answerText);
+  return answerWords.length > 0 && guessWords.every((word) => answerWords.includes(word));
+}
+
+// SONG_RECREATION mode's per-field check — the inverse relation of
+// matchesText above. A song guess often names both fields in one message
+// ("Thriller Michael Jackson"), so checking it against the title alone would
+// fail matchesText's rule (the guess contains extra words — the artist's —
+// that aren't in the title). Here it's the field's words that must all
+// appear in the guess, not the other way around; the guess is allowed extra
+// words because it may be answering the *other* field at the same time.
+function songFieldMatches(guessWords, fieldText) {
+  if (guessWords.length === 0) return false;
+  const fieldWords = significantWords(fieldText);
+  return fieldWords.length > 0 && fieldWords.every((word) => guessWords.includes(word));
+}
+
+// SONG_RECREATION mode: a submitted song must be a real {title, artist} pair
+// from the curated pool — guards against a tampered client submitting a
+// trivial/empty answer to make its own composition free guessing.
+function isValidSong(song) {
+  if (!song || typeof song.title !== 'string' || typeof song.artist !== 'string') return false;
+  return SONGS.some((entry) => entry.title === song.title && entry.artist === song.artist);
 }
