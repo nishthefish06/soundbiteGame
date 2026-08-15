@@ -1,54 +1,22 @@
 /* Styling for the composer prototype, matching Soundbite's actual visual
    language (tokens copied 1:1 from client/src/index.css) rather than a
-   generic dark-mode look. Still a standalone page for now — literal CSS
-   *scoping* (prefixing every selector so it can't leak once embedded
-   alongside index.css) is deferred to the actual Room.js integration step,
-   where it can be tested against the real stylesheet instead of guessed at
-   here in isolation. */
+   generic dark-mode look. Every rule below is scoped under .composer-proto
+   (the root element's own class) so this file is safe to import alongside
+   index.css once the composer moves into App.jsx — nothing here can leak
+   onto the rest of the app, and index.css's same-named classes (.btn,
+   .muted) can't leak in either, since the scoped selector always wins on
+   specificity. Page-level bootstrap (root tokens, box-sizing reset, body
+   background — needed only by the standalone composer-prototype.html
+   harness) lives in proto-page.css instead — that file must never be
+   imported once this merges into the app. */
 
-:root {
-  --bg: #141c5e;
-  --bg-alt: #1a2478;
-  --surface: #212e94;
-  --surface-hover: #2a3aad;
-  --ink: #0c0f2e;
-  --border: #3a4bc0;
-  --text: #fff9f0;
-  --text-muted: #c3b8ec;
-  --primary: #ff3d81;
-  --secondary: #29d6c8;
-  --accent: #ffd23f;
-  --success: #6fd15a;
-  --danger: #ff5252;
-  --radius-lg: 22px;
-  --radius: 14px;
-  --radius-sm: 10px;
-  --font-display: 'Luckiest Guy', cursive;
-  --font-body: 'Baloo 2', ui-rounded, system-ui, sans-serif;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background-color: var(--bg);
-  background-image: radial-gradient(var(--bg-alt) 2.5px, transparent 2.5px);
-  background-size: 26px 26px;
-  color: var(--text);
-  font-family: var(--font-body);
-  font-weight: 500;
-  -webkit-font-smoothing: antialiased;
-}
-
-.proto-shell {
+.composer-proto {
   max-width: 720px;
   margin: 0 auto;
   padding: 24px 16px 64px;
 }
 
-h1 {
+.composer-proto h1 {
   font-family: var(--font-display);
   font-weight: 400;
   font-size: 1.8rem;
@@ -57,7 +25,7 @@ h1 {
   margin: 0 0 8px;
 }
 
-h2 {
+.composer-proto h2 {
   font-family: var(--font-display);
   font-weight: 400;
   font-size: 1.2rem;
@@ -67,21 +35,21 @@ h2 {
   margin: 0 0 12px;
 }
 
-.tracks-header {
+.composer-proto .tracks-header {
   justify-content: space-between;
 }
 
-.tracks-heading {
+.composer-proto .tracks-heading {
   margin: 0;
 }
 
-.muted {
+.composer-proto .muted {
   color: var(--text-muted);
   font-size: 0.85rem;
   line-height: 1.4;
 }
 
-.panel {
+.composer-proto .panel {
   background: var(--surface);
   border: 3px solid var(--ink);
   border-radius: var(--radius-lg);
@@ -90,7 +58,7 @@ h2 {
   box-shadow: 6px 6px 0 var(--ink);
 }
 
-.row {
+.composer-proto .row {
   display: flex;
   align-items: center;
   gap: 14px;
@@ -98,7 +66,7 @@ h2 {
   margin-bottom: 12px;
 }
 
-.btn {
+.composer-proto .btn {
   background: var(--surface-hover);
   color: var(--text);
   border: 3px solid var(--ink);
@@ -114,29 +82,29 @@ h2 {
   transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.12s ease, background 0.15s ease;
 }
 
-.btn:hover {
+.composer-proto .btn:hover {
   background: var(--secondary);
   color: var(--ink);
   transform: translate(-1px, -2px) rotate(-1deg);
   box-shadow: 5px 6px 0 var(--ink);
 }
 
-.btn:active {
+.composer-proto .btn:active {
   transform: translate(3px, 3px) rotate(0deg);
   box-shadow: 0 0 0 var(--ink);
 }
 
-.btn-active {
+.composer-proto .btn-active {
   background: var(--danger);
   color: var(--ink);
 }
 
-.btn-record {
+.composer-proto .btn-record {
   background: var(--danger);
   color: var(--ink);
 }
 
-.toggle {
+.composer-proto .toggle {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -144,7 +112,7 @@ h2 {
   font-weight: 700;
 }
 
-.segmented {
+.composer-proto .segmented {
   display: flex;
   border: 3px solid var(--ink);
   border-radius: var(--radius);
@@ -152,7 +120,7 @@ h2 {
   background: var(--bg-alt);
 }
 
-.segmented button {
+.composer-proto .segmented button {
   background: transparent;
   color: var(--text-muted);
   border: none;
@@ -165,16 +133,16 @@ h2 {
   letter-spacing: 0.03em;
 }
 
-.segmented button:hover {
+.composer-proto .segmented button:hover {
   color: var(--text);
 }
 
-.segmented button.active {
+.composer-proto .segmented button.active {
   background: var(--secondary);
   color: var(--ink);
 }
 
-.drum-grid {
+.composer-proto .drum-grid {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -185,13 +153,13 @@ h2 {
   padding: 6px 0;
 }
 
-.drum-row {
+.composer-proto .drum-row {
   display: flex;
   align-items: center;
   min-width: 628px;
 }
 
-.drum-row-label {
+.composer-proto .drum-row-label {
   width: 52px;
   flex-shrink: 0;
   font-size: 0.8rem;
@@ -203,13 +171,13 @@ h2 {
   padding-left: 4px;
 }
 
-.drum-row-steps {
+.composer-proto .drum-row-steps {
   display: flex;
   gap: 2px;
   flex: 1;
 }
 
-.drum-step {
+.composer-proto .drum-step {
   width: 18px;
   flex-shrink: 0;
   height: 26px;
@@ -219,28 +187,28 @@ h2 {
   cursor: pointer;
 }
 
-.drum-step:hover {
+.composer-proto .drum-step:hover {
   background: var(--surface-hover);
 }
 
-.drum-step-beat {
+.composer-proto .drum-step-beat {
   background: var(--surface-hover);
 }
 
-.drum-step-on {
+.composer-proto .drum-step-on {
   background: var(--accent);
 }
 
-.drum-step-on:hover {
+.composer-proto .drum-step-on:hover {
   background: #ffdc6b;
 }
 
-.drum-step-playhead {
+.composer-proto .drum-step-playhead {
   outline: 2px solid var(--text);
   outline-offset: -2px;
 }
 
-code {
+.composer-proto code {
   background: var(--bg-alt);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -249,7 +217,7 @@ code {
   color: var(--accent);
 }
 
-.transport {
+.composer-proto .transport {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -261,18 +229,18 @@ code {
   margin-bottom: 4px;
 }
 
-.btn-transport {
+.composer-proto .btn-transport {
   min-width: 84px;
 }
 
-.bpm-readout {
+.composer-proto .bpm-readout {
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   color: var(--text);
   font-weight: 700;
   min-width: 2ch;
 }
 
-.track-label {
+.composer-proto .track-label {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -283,7 +251,7 @@ code {
   margin: 20px 0 10px;
 }
 
-.track-swatch {
+.composer-proto .track-swatch {
   width: 9px;
   height: 9px;
   border-radius: 2px;
@@ -294,33 +262,33 @@ code {
 
 /* Same three-color set as the game's own sticker/accent palette, so these
    tracks read as belonging to the same app rather than a bespoke scheme. */
-.track-label-melody {
+.composer-proto .track-label-melody {
   color: var(--primary);
 }
 
-.track-label-bass {
+.composer-proto .track-label-bass {
   color: var(--secondary);
 }
 
-.track-label-drums {
+.composer-proto .track-label-drums {
   color: var(--accent);
 }
 
-.bar-ruler {
+.composer-proto .bar-ruler {
   display: flex;
 }
 
-.bar-ruler-spacer {
+.composer-proto .bar-ruler-spacer {
   width: 44px;
   flex-shrink: 0;
 }
 
-.bar-ruler-marks {
+.composer-proto .bar-ruler-marks {
   display: flex;
   flex: 1;
 }
 
-.bar-ruler-mark {
+.composer-proto .bar-ruler-mark {
   width: 72px;
   flex-shrink: 0;
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -330,7 +298,7 @@ code {
   padding-left: 4px;
 }
 
-.piano-roll {
+.composer-proto .piano-roll {
   display: flex;
   flex-direction: column;
   max-height: 380px;
@@ -342,29 +310,29 @@ code {
   background: var(--bg-alt);
 }
 
-.piano-roll-melody {
+.composer-proto .piano-roll-melody {
   border-left-color: var(--primary);
 }
 
-.piano-roll-bass {
+.composer-proto .piano-roll-bass {
   border-left-color: var(--secondary);
 }
 
-.drum-grid-drums {
+.composer-proto .drum-grid-drums {
   border-left: 5px solid var(--accent);
 }
 
-.piano-roll-row {
+.composer-proto .piano-roll-row {
   display: flex;
   align-items: stretch;
   min-width: 620px;
 }
 
-.piano-roll-row-black {
+.composer-proto .piano-roll-row-black {
   background: rgba(0, 0, 0, 0.22);
 }
 
-.piano-roll-label {
+.composer-proto .piano-roll-label {
   width: 44px;
   flex-shrink: 0;
   background: var(--surface);
@@ -379,16 +347,16 @@ code {
   z-index: 1;
 }
 
-.piano-roll-label:hover {
+.composer-proto .piano-roll-label:hover {
   background: var(--surface-hover);
   color: var(--text);
 }
 
-.piano-roll-steps {
+.composer-proto .piano-roll-steps {
   display: flex;
 }
 
-.piano-roll-cell {
+.composer-proto .piano-roll-cell {
   width: 18px;
   flex-shrink: 0;
   height: 22px;
@@ -399,11 +367,11 @@ code {
   cursor: pointer;
 }
 
-.piano-roll-cell-beat {
+.composer-proto .piano-roll-cell-beat {
   border-left: 1px solid rgba(255, 255, 255, 0.16);
 }
 
-.piano-roll-cell:hover {
+.composer-proto .piano-roll-cell:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -411,42 +379,42 @@ code {
    the head (where it starts) and rounded at head/tail so a multi-cell note
    reads as one connected block rather than separate squares. Colored per
    track to match its accent (pink melody, teal bass). */
-.piano-roll-melody .piano-roll-cell-on {
+.composer-proto .piano-roll-melody .piano-roll-cell-on {
   background: #c22f66;
 }
 
-.piano-roll-melody .piano-roll-cell-on:hover,
-.piano-roll-melody .piano-roll-cell-head.piano-roll-cell-on {
+.composer-proto .piano-roll-melody .piano-roll-cell-on:hover,
+.composer-proto .piano-roll-melody .piano-roll-cell-head.piano-roll-cell-on {
   background: var(--primary);
 }
 
-.piano-roll-bass .piano-roll-cell-on {
+.composer-proto .piano-roll-bass .piano-roll-cell-on {
   background: #1f9e93;
 }
 
-.piano-roll-bass .piano-roll-cell-on:hover,
-.piano-roll-bass .piano-roll-cell-head.piano-roll-cell-on {
+.composer-proto .piano-roll-bass .piano-roll-cell-on:hover,
+.composer-proto .piano-roll-bass .piano-roll-cell-head.piano-roll-cell-on {
   background: var(--secondary);
 }
 
-.piano-roll-cell-head.piano-roll-cell-on {
+.composer-proto .piano-roll-cell-head.piano-roll-cell-on {
   border-radius: 4px 0 0 4px;
 }
 
-.piano-roll-cell-tail.piano-roll-cell-on {
+.composer-proto .piano-roll-cell-tail.piano-roll-cell-on {
   border-radius: 0 4px 4px 0;
 }
 
-.piano-roll-cell-head.piano-roll-cell-tail.piano-roll-cell-on {
+.composer-proto .piano-roll-cell-head.piano-roll-cell-tail.piano-roll-cell-on {
   border-radius: 4px;
 }
 
-.piano-roll-cell-playhead {
+.composer-proto .piano-roll-cell-playhead {
   outline: 1px solid var(--text);
   outline-offset: -1px;
 }
 
-.live-keyboard {
+.composer-proto .live-keyboard {
   display: flex;
   align-items: flex-start;
   overflow-x: auto;
@@ -455,11 +423,11 @@ code {
   border-radius: var(--radius);
 }
 
-.live-keyboard-melody {
+.composer-proto .live-keyboard-melody {
   border-left-color: var(--primary);
 }
 
-.live-key {
+.composer-proto .live-key {
   position: relative;
   flex: 0 0 34px;
   display: flex;
@@ -474,35 +442,35 @@ code {
   font-weight: 700;
 }
 
-.live-keyboard-scale .live-key {
+.composer-proto .live-keyboard-scale .live-key {
   flex-basis: 40px;
 }
 
-.live-key-white {
+.composer-proto .live-key-white {
   background: var(--text);
   color: var(--ink);
   height: 130px;
 }
 
-.live-key-white:hover {
+.composer-proto .live-key-white:hover {
   background: #ffe9d6;
 }
 
-.live-key-black {
+.composer-proto .live-key-black {
   background: var(--ink);
   color: var(--text);
   height: 86px;
 }
 
-.live-key-black:hover {
+.composer-proto .live-key-black:hover {
   background: #1c2050;
 }
 
-.live-key-pressed {
+.composer-proto .live-key-pressed {
   filter: brightness(0.8) saturate(1.4);
 }
 
-.live-key-hint {
+.composer-proto .live-key-hint {
   position: absolute;
   bottom: 6px;
   left: 0;
@@ -514,27 +482,27 @@ code {
   text-transform: uppercase;
 }
 
-.chord-label {
+.composer-proto .chord-label {
   margin-right: 2px;
   font-weight: 700;
 }
 
-.insert-slots {
+.composer-proto .insert-slots {
   flex-wrap: wrap;
 }
 
-.insert-slots button {
+.composer-proto .insert-slots button {
   padding: 0.5rem 0.7rem;
 }
 
-.chord-form {
+.composer-proto .chord-form {
   display: flex;
   gap: 8px;
   flex: 1;
   min-width: 220px;
 }
 
-.chord-input {
+.composer-proto .chord-input {
   flex: 1;
   background: var(--bg-alt);
   border: 3px solid var(--ink);
@@ -547,55 +515,55 @@ code {
   box-shadow: inset 3px 3px 0 rgba(0, 0, 0, 0.2);
 }
 
-.chord-input::placeholder {
+.composer-proto .chord-input::placeholder {
   color: var(--text-muted);
   opacity: 0.8;
   font-weight: 500;
 }
 
-.chord-input:focus {
+.composer-proto .chord-input:focus {
   outline: 3px solid var(--secondary);
   outline-offset: 1px;
 }
 
-.chord-error {
+.composer-proto .chord-error {
   color: var(--danger);
   font-size: 0.8rem;
   font-weight: 700;
 }
 
-.playback {
+.composer-proto .playback {
   margin-top: 8px;
 }
 
-.playback audio {
+.composer-proto .playback audio {
   width: 100%;
 }
 
-.credit {
+.composer-proto .credit {
   text-align: center;
   margin-top: 20px;
   color: var(--text-muted);
 }
 
-.song-panel {
+.composer-proto .song-panel {
   border-color: var(--accent);
 }
 
-.song-name {
+.composer-proto .song-name {
   font-size: 1.2rem;
   font-weight: 800;
   margin: 4px 0 14px;
 }
 
-.song-choices {
+.composer-proto .song-choices {
   display: flex;
   flex-direction: column;
   gap: 10px;
   margin-bottom: 14px;
 }
 
-.song-choice {
+.composer-proto .song-choice {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -609,18 +577,18 @@ code {
   transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.12s ease, background 0.15s ease;
 }
 
-.song-choice:hover {
+.composer-proto .song-choice:hover {
   background: var(--surface-hover);
   transform: translate(-1px, -2px) rotate(-1deg);
   box-shadow: 4px 5px 0 var(--ink);
 }
 
-.song-choice-title {
+.composer-proto .song-choice-title {
   font-weight: 800;
   color: var(--text);
 }
 
-.song-choice-artist {
+.composer-proto .song-choice-artist {
   font-size: 0.85rem;
   color: var(--text-muted);
 }

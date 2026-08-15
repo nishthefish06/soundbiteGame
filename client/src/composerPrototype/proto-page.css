@@ -1,0 +1,42 @@
+/* Standalone-harness page bootstrap ONLY — the composer-prototype.html entry
+   point doesn't load the real app's index.css, so it needs its own tokens
+   and resets to render on its own. This file must never be imported once the
+   composer moves into App.jsx — index.css already provides all of this
+   app-wide, and these bare `body`/`*`/`:root` selectors would leak globally
+   if double-loaded. Scoped component styles live in style.css instead. */
+
+:root {
+  --bg: #141c5e;
+  --bg-alt: #1a2478;
+  --surface: #212e94;
+  --surface-hover: #2a3aad;
+  --ink: #0c0f2e;
+  --border: #3a4bc0;
+  --text: #fff9f0;
+  --text-muted: #c3b8ec;
+  --primary: #ff3d81;
+  --secondary: #29d6c8;
+  --accent: #ffd23f;
+  --success: #6fd15a;
+  --danger: #ff5252;
+  --radius-lg: 22px;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --font-display: 'Luckiest Guy', cursive;
+  --font-body: 'Baloo 2', ui-rounded, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--bg-alt) 2.5px, transparent 2.5px);
+  background-size: 26px 26px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+}

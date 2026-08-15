@@ -7,6 +7,8 @@
 // and client/src/sfx.js elsewhere in this repo — no libraries, nothing wired
 // to the real game.
 
+import { encodeWavBlob } from '../dsp/wavEncoder.js';
+
 const C4_FREQ = 261.63;
 
 const BLACK_KEY_SEMITONES_IN_OCTAVE = new Set([1, 3, 6, 8, 10]);
@@ -480,19 +482,37 @@ export function createComposerEngine() {
       recorder.start();
     },
 
+    // Resolves with a WAV Blob, not the raw MediaRecorder capture — webm
+    // (what MediaRecorder produces) isn't reliably playable in Safari once
+    // it's sent over the socket, so it's decoded and re-encoded here, the
+    // same wavEncoder.js pattern client/src/dsp/processRecording.js uses.
+    // No OfflineAudioContext re-render step is needed like that pipeline
+    // has: there's no separate effects pass to apply here, the capture is
+    // already the final mix, so it's just a format conversion.
     stopRecording() {
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         if (!recorder) {
           resolve(null);
           return;
         }
-        recorder.onstop = () => {
+        const finishedRecorder = recorder;
+        recorder = null;
+        finishedRecorder.onstop = async () => {
           masterGain.disconnect(mediaDest);
-          const blob = new Blob(recordedChunks, { type: 'audio/webm' });
-          recorder = null;
-          resolve(blob);
+          if (recordedChunks.length === 0) {
+            resolve(null);
+            return;
+          }
+          try {
+            const webmBlob = new Blob(recordedChunks, { type: finishedRecorder.mimeType || 'audio/webm' });
+            const arrayBuffer = await webmBlob.arrayBuffer();
+            const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+            resolve(encodeWavBlob(audioBuffer));
+          } catch (err) {
+            reject(err);
+          }
         };
-        recorder.stop();
+        finishedRecorder.stop();
       });
     },
   };
