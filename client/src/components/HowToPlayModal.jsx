@@ -7,6 +7,7 @@ const MODE_BLURBS = [
   ['TELEPHONE', 'Telephone', 'The prompt gets relayed (and distorted) person to person before everyone guesses the original.'],
   ['PERFORMANCE', 'Act It Out', "Act out a wacky prompt with your voice — everyone else rates the performance 1-5 stars."],
   ['WHO_SAID_IT', 'Who Said It?', 'Everyone records the same prompt at once, disguised — then guess who recorded which clip.'],
+  ['SONG_RECREATION', 'Song Recreation', 'Everyone picks a song and recreates it with virtual instruments — then guess the title and artist from each rough recording.'],
 ];
 
 export function HowToPlayModal({ onClose }) {
