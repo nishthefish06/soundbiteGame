@@ -1,7 +1,22 @@
 import { useState } from 'react';
 import { GuessChat } from './GuessChat.jsx';
 
-export function GuessingView({ incomingAudio, secondsLeft, alreadyCorrect, chat, players, selfId, onSubmitGuess }) {
+// `heading`/`placeholder`, when provided, override the default MicDrop
+// copy — used by SONG_RECREATION mode's reuse of this view (see App.jsx's
+// SONG_REVEAL_ACTIVE case). The input/chat/scoring mechanism itself is
+// unchanged either way — Room.js's submitGuess is what actually tells song
+// guesses apart, not anything client-side.
+export function GuessingView({
+  incomingAudio,
+  secondsLeft,
+  alreadyCorrect,
+  chat,
+  players,
+  selfId,
+  onSubmitGuess,
+  heading = "What's the bit?",
+  placeholder = 'Type your guess…',
+}) {
   const [text, setText] = useState('');
 
   async function handleSubmit(e) {
@@ -14,7 +29,7 @@ export function GuessingView({ incomingAudio, secondsLeft, alreadyCorrect, chat,
   return (
     <div className="phase-view guessing-view">
       <div className="guessing-header">
-        <h2>What's the bit?</h2>
+        <h2>{heading}</h2>
         {secondsLeft != null && <span className="timer-pill">{secondsLeft}s</span>}
       </div>
 
@@ -32,7 +47,7 @@ export function GuessingView({ incomingAudio, secondsLeft, alreadyCorrect, chat,
             className="input"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Type your guess…"
+            placeholder={placeholder}
             autoFocus
           />
           <button className="btn btn-primary" type="submit" disabled={!text.trim()}>Guess</button>

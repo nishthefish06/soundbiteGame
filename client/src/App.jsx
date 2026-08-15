@@ -9,6 +9,7 @@ import { PromptSelectionView } from './components/PromptSelectionView.jsx';
 import { ActorRecordingView } from './components/ActorRecordingView.jsx';
 import { RelayRecordingView } from './components/RelayRecordingView.jsx';
 import { GroupRecordingView } from './components/GroupRecordingView.jsx';
+import { ComposingView } from './components/ComposingView.jsx';
 import { MatchingView } from './components/MatchingView.jsx';
 import { GuesserWaitingView } from './components/GuesserWaitingView.jsx';
 import { GuessingView } from './components/GuessingView.jsx';
@@ -23,6 +24,7 @@ import {
   GUESSING_DURATION_MS,
   RATING_DURATION_MS,
   MATCHING_DURATION_MS,
+  SONG_REVEAL_DURATION_MS,
   VALID_ROUND_COUNTS,
   GAME_MODES,
 } from './gameConstants.js';
@@ -36,6 +38,7 @@ export default function App() {
   const guessingRemainingMs = useCountdown(game.phaseEnteredAt, GUESSING_DURATION_MS);
   const ratingRemainingMs = useCountdown(game.phaseEnteredAt, RATING_DURATION_MS);
   const matchingRemainingMs = useCountdown(game.phaseEnteredAt, MATCHING_DURATION_MS);
+  const songRevealRemainingMs = useCountdown(game.phaseEnteredAt, SONG_REVEAL_DURATION_MS);
 
   // Lifted out of LobbyView so a "Play again" (which unmounts/remounts it)
   // doesn't reset the host back to the defaults every time.
@@ -58,6 +61,7 @@ export default function App() {
   const guessingSecondsLeft = snapshot.state === 'GUESSING_ACTIVE' ? Math.ceil(guessingRemainingMs / 1000) : null;
   const ratingSecondsLeft = snapshot.state === 'RATING_ACTIVE' ? Math.ceil(ratingRemainingMs / 1000) : null;
   const matchingSecondsLeft = snapshot.state === 'MATCHING_ACTIVE' ? Math.ceil(matchingRemainingMs / 1000) : null;
+  const songRevealSecondsLeft = snapshot.state === 'SONG_REVEAL_ACTIVE' ? Math.ceil(songRevealRemainingMs / 1000) : null;
 
   function renderPhase() {
     switch (snapshot.state) {
@@ -148,6 +152,21 @@ export default function App() {
           />
         );
 
+      case 'COMPOSING':
+        return game.isSpectating ? (
+          <GuesserWaitingView
+            actorName="Everyone"
+            action="is composing a track"
+            subtext="You'll join the rotation next round."
+          />
+        ) : (
+          <ComposingView
+            onSubmitComposition={game.submitComposition}
+            phaseEnteredAt={game.phaseEnteredAt}
+            composingProgress={game.composingProgress}
+          />
+        );
+
       case 'MATCHING_ACTIVE':
         return (
           <MatchingView
@@ -189,6 +208,42 @@ export default function App() {
             players={snapshot.players}
             selfId={playerId}
             onSubmitGuess={game.submitGuess}
+          />
+        );
+      }
+
+      // SONG_RECREATION mode: one player's composition plays and everyone
+      // else free-guesses its title/artist. Reuses GuessingView/
+      // ActorListeningView as-is, same infra GUESSING_ACTIVE uses above —
+      // Room.js's submitGuess already branches on currentMode server-side,
+      // so the client needs no new guessing UI, just a different gate
+      // (isCurrentComposer instead of isActor/chain membership).
+      case 'SONG_REVEAL_ACTIVE': {
+        const cannotGuess = game.isCurrentComposer || game.isSpectating;
+        return cannotGuess ? (
+          <ActorListeningView
+            secondsLeft={songRevealSecondsLeft}
+            chat={game.chat}
+            players={snapshot.players}
+            selfId={playerId}
+            isSpectating={game.isSpectating}
+            subtext={
+              game.isSpectating
+                ? undefined
+                : "You can't guess your own song — just watch the chat roll in."
+            }
+          />
+        ) : (
+          <GuessingView
+            incomingAudio={game.incomingAudio}
+            secondsLeft={songRevealSecondsLeft}
+            alreadyCorrect={snapshot.correctGuesserIds.includes(playerId)}
+            chat={game.chat}
+            players={snapshot.players}
+            selfId={playerId}
+            onSubmitGuess={game.submitGuess}
+            heading="Guess the song"
+            placeholder="Title, artist, or both…"
           />
         );
       }

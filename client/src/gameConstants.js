@@ -9,6 +9,8 @@ export const GUESSING_DURATION_MS = 60_000;
 export const RATING_DURATION_MS = 30_000;
 export const GROUP_RECORDING_DURATION_MS = RECORDING_PREP_DURATION_MS + RECORDING_DURATION_MS;
 export const MATCHING_DURATION_MS = 20_000;
+export const COMPOSING_DURATION_MS = 150_000;
+export const SONG_REVEAL_DURATION_MS = 45_000;
 export const REVEAL_DURATION_MS = 8_000;
 
 export const MIN_PLAYERS = 3;
@@ -20,12 +22,13 @@ export const MAX_CUSTOM_PROMPTS = 50;
 export const MAX_CUSTOM_PROMPT_LENGTH = 60;
 
 // Mirrors server/src/game/prompts.js's GAME_MODES/PromptCategory, plus CUSTOM,
-// TELEPHONE, and WHO_SAID_IT (none has a static server-side category — CUSTOM's
-// prompt list comes from the host at game-start time, TELEPHONE and
-// WHO_SAID_IT both deal from the Sound Effect pool but play out as a relay
-// chain / simultaneous everyone-records-at-once round instead of one
-// recording) — display metadata only.
-export const GAME_MODES = ['SOUND_EFFECT', 'CHARACTER', 'CUSTOM', 'TELEPHONE', 'PERFORMANCE', 'WHO_SAID_IT'];
+// TELEPHONE, WHO_SAID_IT, and SONG_RECREATION (none has a static server-side
+// category — CUSTOM's prompt list comes from the host at game-start time,
+// TELEPHONE and WHO_SAID_IT both deal from the Sound Effect pool but play out
+// as a relay chain / simultaneous everyone-records-at-once round instead of
+// one recording, and SONG_RECREATION has no shared prompt at all — everyone
+// picks their own song) — display metadata only.
+export const GAME_MODES = ['SOUND_EFFECT', 'CHARACTER', 'CUSTOM', 'TELEPHONE', 'PERFORMANCE', 'WHO_SAID_IT', 'SONG_RECREATION'];
 export const GAME_MODE_META = {
   SOUND_EFFECT: { label: 'Sound Effect' },
   CHARACTER: { label: 'Character' },
@@ -33,4 +36,5 @@ export const GAME_MODE_META = {
   TELEPHONE: { label: 'Telephone' },
   PERFORMANCE: { label: 'Act It Out' },
   WHO_SAID_IT: { label: 'Who Said It?' },
+  SONG_RECREATION: { label: 'Song Recreation' },
 };

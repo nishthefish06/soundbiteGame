@@ -46,6 +46,28 @@ function buildHistoryEntry(snapshot, audio) {
     };
   }
 
+  if (snapshot.currentMode === 'SONG_RECREATION') {
+    // Same "several clips, no single recap slot" shape as WHO_SAID_IT above,
+    // keyed by song instead of by clip owner. correctGuesserNames stays
+    // empty for the same gameSuperlatives.js reason.
+    return {
+      turnNumber: snapshot.turnNumber,
+      mode: snapshot.currentMode,
+      prompt: null,
+      modifier: null,
+      performerNames: snapshot.songResults.map((r) => nameFor(r.composerId)),
+      correctGuesserNames: [],
+      ratings: [],
+      songResults: snapshot.songResults.map((r) => ({
+        composerName: nameFor(r.composerId),
+        title: r.title,
+        artist: r.artist,
+        correctGuesserNames: r.correctGuesserIds.map(nameFor),
+      })),
+      audio: null,
+    };
+  }
+
   const performerIds = snapshot.chainOrder.length > 0 ? snapshot.chainOrder : [snapshot.actorId];
   return {
     turnNumber: snapshot.turnNumber,
@@ -71,6 +93,7 @@ export function useGameRoom(socket, playerId) {
   const [originalAudio, setOriginalAudio] = useState(null); // { modifier, url } — TELEPHONE mode's reveal-time replay of hop 1
   const [ratingProgress, setRatingProgress] = useState(null); // { count, total } — PERFORMANCE mode's live "N of M rated" headcount
   const [recordingProgress, setRecordingProgress] = useState(null); // { count, total } — WHO_SAID_IT's live "N of M recorded" headcount
+  const [composingProgress, setComposingProgress] = useState(null); // { count, total } — SONG_RECREATION's live "N of M composed" headcount
   const [roundHistory, setRoundHistory] = useState([]); // one entry per completed+revealed turn this game, for the game-over recap
   const [error, setError] = useState(null);
   const [phaseEnteredAt, setPhaseEnteredAt] = useState(null);
@@ -130,6 +153,7 @@ export function useGameRoom(socket, playerId) {
         });
         setRatingProgress(null);
         setRecordingProgress(null);
+        setComposingProgress(null);
       }
 
       if (leavingReveal) {
@@ -194,6 +218,10 @@ export function useGameRoom(socket, playerId) {
       setRecordingProgress({ count, total });
     }
 
+    function onComposingProgress({ count, total }) {
+      setComposingProgress({ count, total });
+    }
+
     function onHostChanged(hostId) {
       setSnapshot((prev) => (prev ? { ...prev, hostId } : prev));
     }
@@ -214,6 +242,7 @@ export function useGameRoom(socket, playerId) {
       });
       setRatingProgress(null);
       setRecordingProgress(null);
+      setComposingProgress(null);
       setRoundHistory((prev) => {
         for (const entry of prev) {
           if (entry.audio) URL.revokeObjectURL(entry.audio.url);
@@ -236,6 +265,7 @@ export function useGameRoom(socket, playerId) {
     socket.on('game:originalAudioReveal', onOriginalAudioReveal);
     socket.on('game:ratingProgress', onRatingProgress);
     socket.on('game:groupRecordingProgress', onGroupRecordingProgress);
+    socket.on('game:composingProgress', onComposingProgress);
     socket.on('room:hostChanged', onHostChanged);
     socket.on('room:kicked', onKicked);
     return () => {
@@ -246,6 +276,7 @@ export function useGameRoom(socket, playerId) {
       socket.off('game:originalAudioReveal', onOriginalAudioReveal);
       socket.off('game:ratingProgress', onRatingProgress);
       socket.off('game:groupRecordingProgress', onGroupRecordingProgress);
+      socket.off('game:composingProgress', onComposingProgress);
       socket.off('room:hostChanged', onHostChanged);
       socket.off('room:kicked', onKicked);
     };
@@ -311,6 +342,7 @@ export function useGameRoom(socket, playerId) {
           });
           setRatingProgress(null);
           setRecordingProgress(null);
+          setComposingProgress(null);
           setRoundHistory((prev) => {
             for (const entry of prev) {
               if (entry.audio) URL.revokeObjectURL(entry.audio.url);
@@ -375,6 +407,26 @@ export function useGameRoom(socket, playerId) {
         ownAudioRef.current = { modifier, url: URL.createObjectURL(blob) };
         const audio = await blob.arrayBuffer();
         socket.emit('game:submitRecording', { modifier, audio }, (res) => {
+          if (!res.ok) setError(res.error);
+          resolve(res);
+        });
+      }),
+    [socket],
+  );
+
+  // SONG_RECREATION mode only: `song` is the {title, artist} the player
+  // picked (client-side, from client/src/composerPrototype/songs.js's
+  // pool — validated again server-side against the real pool). Unlike
+  // submitRecording, no ownAudioRef stash is needed: the transport layer
+  // releases composition audio via a server-initiated io.to() broadcast (see
+  // socketServer.js's SONG_REVEAL_ACTIVE branch), which reaches the composer's
+  // own socket same as everyone else's, unlike a direct socket.to() relay.
+  const submitComposition = useCallback(
+    (song, blob) =>
+      new Promise(async (resolve) => {
+        setError(null);
+        const audio = await blob.arrayBuffer();
+        socket.emit('game:submitComposition', { song, audio }, (res) => {
           if (!res.ok) setError(res.error);
           resolve(res);
         });
@@ -452,6 +504,7 @@ export function useGameRoom(socket, playerId) {
     originalAudio,
     ratingProgress,
     recordingProgress,
+    composingProgress,
     roundHistory,
     error,
     phaseEnteredAt,
@@ -463,6 +516,10 @@ export function useGameRoom(socket, playerId) {
     // currently playing — everyone else who recorded is still eligible to
     // guess other players' clips, they just can't guess this one.
     isClipOwner: Boolean(snapshot && snapshot.currentClipOwnerId === playerId),
+    // SONG_RECREATION mode: true only while *this player's own* composition
+    // is the one currently playing — same "sit out this one, still eligible
+    // for the others" shape as isClipOwner above.
+    isCurrentComposer: Boolean(snapshot && snapshot.currentComposerId === playerId),
     isHost: Boolean(snapshot && snapshot.hostId === playerId),
     // Joined mid-game — can watch but can't guess/rate until the round
     // already in progress finishes (see Room.js's addPlayer/_promoteSpectators).
@@ -474,6 +531,7 @@ export function useGameRoom(socket, playerId) {
     playAgain,
     selectPrompt,
     submitRecording,
+    submitComposition,
     submitGuess,
     submitRating,
     submitMatchGuess,

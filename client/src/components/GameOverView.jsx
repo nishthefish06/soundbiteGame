@@ -83,6 +83,17 @@ export function GameOverView({ players, roundHistory, onPlayAgain }) {
                         </li>
                       ))}
                     </ul>
+                  ) : entry.mode === 'SONG_RECREATION' ? (
+                    <ul className="round-recap-clip-list">
+                      {entry.songResults.map((result, i) => (
+                        <li key={i} className="muted round-recap-outcome">
+                          {result.composerName} recreated {result.title} — {result.artist} —{' '}
+                          {result.correctGuesserNames.length > 0
+                            ? `solved by ${result.correctGuesserNames.join(', ')}`
+                            : 'nobody fully solved it'}
+                        </li>
+                      ))}
+                    </ul>
                   ) : entry.correctGuesserNames.length > 0 ? (
                     <p className="muted round-recap-outcome">{entry.correctGuesserNames.join(', ')} guessed it!</p>
                   ) : (

@@ -552,7 +552,15 @@ function LivePiano({ accent, simple, chromaticRange, scaleSteps, keyMode, onKeyM
   );
 }
 
-export default function ComposerPrototype() {
+// `onSubmit`, when provided, turns on the "send this take to the game"
+// affordance below the recorded playback — `onSubmit({title, artist}, blob)`,
+// expected to resolve `{ ok, error? }` the same shape every other
+// useGameRoom action creator does. Left undefined for the standalone
+// composer-prototype.html harness, which has no server to send to.
+// `composingProgress` ({count, total}), when provided, is shown alongside
+// the post-submit "waiting for everyone else" message — display only, this
+// component doesn't compute it itself.
+export default function ComposerPrototype({ onSubmit, composingProgress } = {}) {
   const engineRef = useRef(null);
   const [songChoices, setSongChoices] = useState(drawSongOptions);
   const [chosenSong, setChosenSong] = useState(null);
@@ -609,8 +617,17 @@ export default function ComposerPrototype() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordMs, setRecordMs] = useState(0);
   const [recordedUrl, setRecordedUrl] = useState(null);
+  const [recordedBlob, setRecordedBlob] = useState(null);
+  const [recordError, setRecordError] = useState(null);
   const recordTimerRef = useRef(null);
   const recordStartRef = useRef(0);
+
+  // Submit state is separate from isRecording/recordedUrl above — re-recording
+  // after a failed submit should still be possible, so this doesn't get
+  // cleared by startRecording the way recordedUrl/recordedBlob do.
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
   const [pianoStatus, setPianoStatus] = useState('loading'); // 'loading' | 'ready' | 'error'
 
@@ -710,6 +727,9 @@ export default function ComposerPrototype() {
     setIsRecording(true);
     setRecordMs(0);
     setRecordedUrl(null);
+    setRecordedBlob(null);
+    setRecordError(null);
+    setSubmitError(null);
     recordStartRef.current = Date.now();
     recordTimerRef.current = window.setInterval(() => {
       const elapsed = Date.now() - recordStartRef.current;
@@ -722,22 +742,47 @@ export default function ComposerPrototype() {
     if (recordTimerRef.current) window.clearInterval(recordTimerRef.current);
     recordTimerRef.current = null;
     setIsRecording(false);
-    const blob = await engineRef.current?.stopRecording();
-    if (blob) setRecordedUrl(URL.createObjectURL(blob));
+    try {
+      const blob = await engineRef.current?.stopRecording();
+      if (blob) {
+        setRecordedUrl(URL.createObjectURL(blob));
+        setRecordedBlob(blob);
+      }
+    } catch (err) {
+      setRecordError('Could not process that take — try recording again.');
+    }
   }
 
   const secondsLeft = Math.max(0, Math.ceil((RECORD_LIMIT_MS - recordMs) / 1000));
 
+  async function handleSubmit() {
+    if (!onSubmit || !chosenSong || !recordedBlob) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await onSubmit({ title: chosenSong.title, artist: chosenSong.artist }, recordedBlob);
+      if (res?.ok) {
+        setSubmitted(true);
+      } else {
+        setSubmitError('Could not send that take — try again.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
-    <div className="proto-shell">
-      <header>
-        <h1>Song Recreation — Composer Prototype</h1>
-        <p className="muted">
-          Throwaway test harness, not part of the real game. A simple DAW-style piano roll: click cells to place
-          drum hits and notes on a shared 32-step grid, hit play to hear it loop. Validating: does this feel fun,
-          and does the result stay guessable even though it's rough?
-        </p>
-      </header>
+    <div className="composer-proto">
+      {!onSubmit && (
+        <header>
+          <h1>Song Recreation — Composer Prototype</h1>
+          <p className="muted">
+            Throwaway test harness, not part of the real game. A simple DAW-style piano roll: click cells to place
+            drum hits and notes on a shared 32-step grid, hit play to hear it loop. Validating: does this feel fun,
+            and does the result stay guessable even though it's rough?
+          </p>
+        </header>
+      )}
 
       <section className="panel song-panel">
         {chosenSong ? (
@@ -907,10 +952,26 @@ export default function ComposerPrototype() {
             </button>
           )}
         </div>
+        {recordError && <p className="chord-error">{recordError}</p>}
         {recordedUrl && (
           <div className="playback">
             <audio controls src={recordedUrl} />
           </div>
+        )}
+        {onSubmit && recordedBlob && !submitted && (
+          <div className="row">
+            <button className="btn btn-primary" onClick={handleSubmit} disabled={!chosenSong || isSubmitting}>
+              {isSubmitting ? 'Sending…' : 'Send my track'}
+            </button>
+            {!chosenSong && <span className="muted">Pick a song above first.</span>}
+          </div>
+        )}
+        {submitError && <p className="chord-error">{submitError}</p>}
+        {submitted && (
+          <p className="success-text">
+            Sent — waiting for everyone else…
+            {composingProgress && ` (${composingProgress.count}/${composingProgress.total})`}
+          </p>
         )}
       </section>
 

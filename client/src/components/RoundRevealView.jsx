@@ -9,7 +9,33 @@ export function RoundRevealView({ snapshot, phaseEnteredAt, originalAudio }) {
   const isChainMode = snapshot.chainOrder.length > 0;
   const isPerformanceMode = snapshot.currentMode === 'PERFORMANCE';
   const isWhoSaidIt = snapshot.currentMode === 'WHO_SAID_IT';
+  const isSongRecreation = snapshot.currentMode === 'SONG_RECREATION';
   const nameFor = (id) => snapshot.players.find((p) => p.id === id)?.name ?? 'Someone';
+
+  if (isSongRecreation) {
+    return (
+      <div className="phase-view reveal-view">
+        <p className="eyebrow">This round's songs</p>
+
+        <ul className="clip-results-list">
+          {snapshot.songResults.map((result, i) => (
+            <li key={result.composerId} className="clip-results-row">
+              <span className="clip-results-owner">
+                {nameFor(result.composerId)} recreated <strong>{result.title}</strong> — {result.artist}
+              </span>
+              {result.correctGuesserIds.length > 0 ? (
+                <span className="muted">Solved by {result.correctGuesserIds.map(nameFor).join(', ')}</span>
+              ) : (
+                <span className="muted">Nobody fully solved it</span>
+              )}
+            </li>
+          ))}
+        </ul>
+
+        <p className="muted">Next round in {Math.ceil(remainingMs / 1000)}s…</p>
+      </div>
+    );
+  }
 
   if (isWhoSaidIt) {
     return (

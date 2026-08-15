@@ -186,6 +186,16 @@ export function CustomIcon(props) {
   );
 }
 
+export function SongRecreationIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
+      <path d="M9 17V4.5l10-2v12.5" {...stroke} />
+      <circle cx="6.5" cy="17" r="2.5" {...stroke} />
+      <circle cx="16.5" cy="14.5" r="2.5" {...stroke} />
+    </svg>
+  );
+}
+
 export function CopyIcon(props) {
   return (
     <svg viewBox="0 0 24 24" width="1em" height="1em" {...props}>
@@ -218,6 +228,7 @@ export const MODE_ICONS = {
   TELEPHONE: TelephoneIcon,
   PERFORMANCE: StarIcon,
   WHO_SAID_IT: WhoSaidItIcon,
+  SONG_RECREATION: SongRecreationIcon,
 };
 
 export const MODIFIER_ICONS = {
